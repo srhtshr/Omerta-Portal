@@ -1,0 +1,20 @@
+{
+  "TestRoom": {
+    "ownerClientId": "",
+    "ownerPlayer": "",
+    "members": {},
+    "pending": {}
+  },
+  "Tayfa": {
+    "ownerClientId": "client_vcd47et2sv8ww8ji0uz9y",
+    "ownerPlayer": "Tinerci",
+    "members": {
+      "client_vcd47et2sv8ww8ji0uz9y": {
+        "player": "Tinerci",
+        "role": "owner",
+        "joinedAt": 1781290589
+      }
+    },
+    "pending": {}
+  }
+}
