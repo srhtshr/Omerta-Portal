@@ -114,21 +114,39 @@ function readSettingValue(settings, uppercaseKey, lowercaseKey, fallback = "") {
 }
 
 async function applySimplifiedDefaults() {
+  const existing = await chrome.storage.local.get([
+    "ROOM",
+    "room",
+    "ACTIVE_ROOM",
+    "activeRoom",
+    "API_URL",
+    "apiUrl",
+    "ENABLED",
+    "enabled",
+    "POLL_INTERVAL_MS",
+    "pollIntervalMs",
+    "FAMILY_KEY",
+    "familyKey",
+    "MANUAL_ALIAS",
+    "manualAlias"
+  ]);
+  const currentRoom = existing.ROOM || existing.room || existing.ACTIVE_ROOM || existing.activeRoom || STORED_ROOM_NAME;
+  const currentApiUrl = existing.API_URL || existing.apiUrl || DEFAULT_SETTINGS.API_URL;
   const payload = {
-    ENABLED: true,
-    API_URL: DEFAULT_SETTINGS.API_URL,
-    ROOM: STORED_ROOM_NAME,
-    POLL_INTERVAL_MS: DEFAULT_SETTINGS.pollIntervalMs,
-    FAMILY_KEY: "",
-    MANUAL_ALIAS: "",
-    ACTIVE_ROOM: STORED_ROOM_NAME,
-    enabled: true,
-    apiUrl: DEFAULT_SETTINGS.API_URL,
-    room: STORED_ROOM_NAME,
-    pollIntervalMs: DEFAULT_SETTINGS.pollIntervalMs,
-    familyKey: "",
-    manualAlias: "",
-    activeRoom: STORED_ROOM_NAME,
+    ENABLED: typeof existing.ENABLED === "boolean" ? existing.ENABLED : true,
+    API_URL: currentApiUrl,
+    ROOM: currentRoom,
+    POLL_INTERVAL_MS: Number(existing.POLL_INTERVAL_MS || existing.pollIntervalMs) || DEFAULT_SETTINGS.pollIntervalMs,
+    FAMILY_KEY: existing.FAMILY_KEY || existing.familyKey || "",
+    MANUAL_ALIAS: existing.MANUAL_ALIAS || existing.manualAlias || "",
+    ACTIVE_ROOM: currentRoom,
+    enabled: typeof existing.enabled === "boolean" ? existing.enabled : true,
+    apiUrl: currentApiUrl,
+    room: currentRoom,
+    pollIntervalMs: Number(existing.pollIntervalMs || existing.POLL_INTERVAL_MS) || DEFAULT_SETTINGS.pollIntervalMs,
+    familyKey: existing.familyKey || existing.FAMILY_KEY || "",
+    manualAlias: existing.manualAlias || existing.MANUAL_ALIAS || "",
+    activeRoom: currentRoom,
   };
 
   await getOrCreateClientId();
