@@ -1324,7 +1324,7 @@ function renderDashboardHtml() {
       <div class="topbar">
         <div class="brand">Omerta Portal v1.0</div>
         <div class="topbar-actions">
-          <a id="downloadExtensionLink" class="topbar-link" href="#" onclick="event.preventDefault();" title="Extension download link will be updated here later.">Download Extension</a>
+          <a id="downloadExtensionLink" class="topbar-link" href="https://github.com/srhtshr/Omerta-Portal/raw/main/extension.zip" target="_blank" rel="noopener noreferrer">Download Extension</a>
         </div>
         <input id="roomInput" type="hidden" value="General">
         <button id="applyRoomButton" class="button" type="button" style="display: none;">Open Room</button>
