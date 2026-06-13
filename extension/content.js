@@ -1,4 +1,138 @@
-const isDashboard = window.location.origin.includes("localhost:3000") || window.location.origin.includes("127.0.0.1:3000");
+const DASHBOARD_HOSTS = [
+  "localhost:3000",
+  "127.0.0.1:3000",
+  "omerta-portal.onrender.com"
+];
+
+const isDashboard = DASHBOARD_HOSTS.some(host =>
+  window.location.origin.includes(host)
+) || !!document.getElementById("nicknamePlayerTR");
+
+const SERVER_PROFILES = [
+  {
+    serverId: "nl",
+    displayName: "nl",
+    parserType: "omerta",
+    language: "nl",
+    hostPatterns: ["barafranca.nl"],
+    labelAliases: {
+      crime: ["Volgende misdaadpoging", "Next crime attempt", "Bir Sonraki Suc Girisimi", "Próximo Crime"],
+      car: ["Volgende autojatpoging", "Next car attempt", "Next car stealing attempt", "Bir Sonraki Araba Calma", "Próximo Assalto a Carro"],
+      heist: ["Volgende heist", "Next heist", "Bir sonraki E5 Baskini", "Próximo Heist"],
+      organizedCrime: ["Volgende georganiseerde misdaad", "Next organised crime", "Next organized crime", "Bir Sonraki Organize Suc", "Próximo OC"],
+      megaOrganizedCrime: ["Volgende mega georganiseerde misdaad", "Next mega organised crime", "Next mega organized crime", "Bir Sonraki Mega Organize Suc", "Próximo Mega OC"],
+      flight: ["Volgende vlucht", "Next flight", "Bir Sonraki Ucus", "Próxima Viagem"],
+      bullets: ["Volgende kogeltransactie", "Next bullet deal", "Next bullet transaction", "Bir Sonraki Mermi Satin Alma", "Próxima Compra de Bala"],
+      assassination: ["Volgende moordpoging", "Next kill attempt", "Next assassination attempt", "Bir Sonraki Cinayet", "Próximo Assassínio"],
+      race: ["Volgende autorace", "Next car race", "Bir Sonraki Araba Yarisi", "Próxima Corrida"],
+      blood: ["Volgende bloedtransfusie", "Next blood buy", "Next blood transfusion", "Bir Sonraki Kan Alisi", "Próxima Compra de Sangue"],
+      spot: ["Volgende spot overval", "Next spot raid", "Bir Sonraki Spot Baskini", "Próximo Assalto a Spot"],
+      alcohol: ["Drank", "Booze", "Alcohol", "Alkollu icki", "Estatuto com Álcool"],
+      drugs: ["Drugs", "Narcs", "Drugs", "Narkotik", "Estatuto com Narcóticos"],
+      rank: ["Rang", "Rank", "Seviye", "Estatuto"],
+      progression: ["Rang progressie", "Rangvordering", "Rank progress", "Rank progression", "Progress to next rank", "Seviye Ilerlemesi", "Progresso no estatuto"],
+      activity: ["Activiteit", "Activity"],
+      bullets_field: ["Kogels"],
+      money: ["Contant geld"],
+      bank: ["Bankgeld"]
+    }
+  },
+  {
+    serverId: "pt",
+    displayName: "pt",
+    parserType: "omerta",
+    language: "pt",
+    hostPatterns: ["omerta.pt", "barafranca.pt"],
+    labelAliases: {
+      crime: ["Próximo Crime", "Next crime attempt", "Bir Sonraki Suc Girisimi"],
+      car: ["Próximo Assalto a Carro", "Next car attempt", "Next car stealing attempt", "Bir Sonraki Araba Calma"],
+      heist: ["Próximo Heist", "Next heist", "Bir sonraki E5 Baskini"],
+      organizedCrime: ["Próximo OC", "Next organised crime", "Next organized crime", "Bir Sonraki Organize Suc"],
+      megaOrganizedCrime: ["Próximo Mega OC", "Next mega organised crime", "Next mega organized crime", "Bir Sonraki Mega Organize Suc"],
+      flight: ["Próxima Viagem", "Next flight", "Bir Sonraki Ucus"],
+      bullets: ["Próxima Compra de Bala", "Next bullet deal", "Next bullet transaction", "Bir Sonraki Mermi Satin Alma"],
+      assassination: ["Próximo Assassínio", "Next kill attempt", "Next assassination attempt", "Bir Sonraki Cinayet"],
+      race: ["Próxima Corrida", "Next car race", "Bir Sonraki Araba Yarisi"],
+      blood: ["Próxima Compra de Sangue", "Next blood buy", "Next blood transfusion", "Bir Sonraki Kan Alisi"],
+      spot: ["Próximo Assalto a Spot", "Next spot raid", "Bir Sonraki Spot Baskini"],
+      alcohol: ["Estatuto com Álcool", "Booze", "Alcohol", "Alkollu icki", "Drank"],
+      drugs: ["Estatuto com Narcóticos", "Narcs", "Drugs", "Narkotik", "Drugs"],
+      rank: ["Estatuto", "Informação de estatuto", "Informação do estatuto", "Informações do estatuto", "Rank", "Rang", "Seviye"],
+      progression: ["Progresso no estatuto", "Rank progress", "Rank progression", "Progress to next rank", "Rangvordering", "Rang progressie", "Seviye Ilerlemesi"],
+      activity: ["Saúde", "Activity", "Activiteit"],
+      bullets_field: ["Balas"],
+      money: ["Dinheiro"],
+      bank: ["Na conta bancária"]
+    }
+  },
+  {
+    serverId: "tr",
+    displayName: "tr",
+    parserType: "omerta",
+    language: "tr",
+    hostPatterns: ["omerta.com.tr", "barafranca.com.tr", "barafranca.tr"],
+    labelAliases: {
+      crime: ["Bir Sonraki Suc Girisimi", "Bir Sonraki Suç Girişimi", "Next crime attempt", "Próximo Crime", "Sıradaki suç denemesi", "Sıradaki suç"],
+      car: ["Bir Sonraki Araba Calma", "Bir Sonraki Araba Çalma", "Next car attempt", "Next car stealing attempt", "Próximo Assalto a Carro", "Sıradaki araba çalma denemesi", "Sıradaki araba çalma"],
+      heist: ["Bir sonraki E5 Baskini", "Bir sonraki E5 Baskını", "Next heist", "Próximo Heist", "Sıradaki soygun"],
+      organizedCrime: ["Bir Sonraki Organize Suc", "Bir Sonraki Organize Suç", "Next organised crime", "Next organized crime", "Próximo OC", "Sıradaki organize suç"],
+      megaOrganizedCrime: ["Bir Sonraki Mega Organize Suc", "Bir Sonraki Mega Organize Suç", "Next mega organised crime", "Next mega organized crime", "Próximo Mega OC", "Sıradaki mega organize suç"],
+      flight: ["Bir Sonraki Ucus", "Bir Sonraki Uçuş", "Next flight", "Próxima Viagem", "Sıradaki uçuş", "Sıradaki seyahat"],
+      bullets: ["Bir Sonraki Mermi Satin Alma", "Bir Sonraki Mermi Satın Alma", "Next bullet deal", "Next bullet transaction", "Próxima Compra de Bala", "Sıradaki mermi satın alımı", "Sıradaki mermi alımı"],
+      assassination: ["Bir Sonraki Cinayet", "Next kill attempt", "Next assassination attempt", "Próximo Assassínio", "Sıradaki cinayet denemesi", "Sıradaki suikast denemesi"],
+      race: ["Bir Sonraki Araba Yarisi", "Bir Sonraki Araba Yarışı", "Next car race", "Próxima Corrida", "Sıradaki araba yarışı"],
+      blood: ["Bir Sonraki Kan Alisi", "Bir Sonraki Kan Alışı", "Next blood buy", "Next blood transfusion", "Próxima Compra de Sangue"],
+      spot: ["Bir Sonraki Spot Baskini", "Bir Sonraki Spot Baskını", "Next spot raid", "Próximo Assalto a Spot"],
+      alcohol: ["Alkollu icki", "Alkollü içki", "Booze", "Alcohol", "Estatuto com Álcool", "Drank"],
+      drugs: ["Narkotik", "Narcs", "Drugs", "Estatuto com Narcóticos"],
+      rank: ["Seviye", "Rütbe", "Rank", "Rang", "Estatuto"],
+      progression: ["Seviye Ilerlemesi", "Seviye İlerlemesi", "Rütbe ilerlemesi", "Rütbe gelişi", "Rank progress", "Rank progression", "Progress to next rank", "Rangvordering", "Rang progressie", "Progresso no estatuto"],
+      activity: ["Aktivite", "Sağlık", "Activity", "Activiteit"],
+      bullets_field: ["Mermi"],
+      money: ["Para"],
+      bank: ["Banka", "Bankadaki para"]
+    }
+  },
+  {
+    serverId: "com",
+    displayName: "com",
+    parserType: "omerta",
+    language: "en",
+    hostPatterns: ["barafranca.com", "omerta.dm"],
+    labelAliases: {
+      crime: ["Next crime attempt", "Bir Sonraki Suc Girisimi", "Próximo Crime"],
+      car: ["Next car attempt", "Next car stealing attempt", "Bir Sonraki Araba Calma", "Próximo Assalto a Carro"],
+      heist: ["Next heist", "Bir sonraki E5 Baskini", "Próximo Heist"],
+      organizedCrime: ["Next organised crime", "Next organized crime", "Bir Sonraki Organize Suc", "Próximo OC"],
+      megaOrganizedCrime: ["Next mega organised crime", "Next mega organized crime", "Bir Sonraki Mega Organize Suc", "Próximo Mega OC"],
+      flight: ["Next flight", "Bir Sonraki Ucus", "Próxima Viagem"],
+      bullets: ["Next bullet deal", "Next bullet transaction", "Bir Sonraki Mermi Satin Alma", "Próxima Compra de Bala"],
+      assassination: ["Next kill attempt", "Next assassination attempt", "Bir Sonraki Cinayet", "Próximo Assassínio"],
+      race: ["Next car race", "Bir Sonraki Araba Yarisi", "Próxima Corrida"],
+      blood: ["Next blood buy", "Next blood transfusion", "Bir Sonraki Kan Alisi", "Próxima Compra de Sangue"],
+      spot: ["Next spot raid", "Bir Sonraki Spot Baskini", "Próximo Assalto a Spot"],
+      alcohol: ["Booze", "Alcohol", "Alkollu icki", "Estatuto com Álcool", "Drank"],
+      drugs: ["Narcs", "Drugs", "Narkotik", "Estatuto com Narcóticos"],
+      rank: ["Rank", "Rang", "Seviye", "Estatuto"],
+      progression: ["Rank progress", "Rank progression", "Progress to next rank", "Rangvordering", "Rang progressie", "Seviye Ilerlemesi", "Progresso no estatuto"],
+      activity: ["Activity", "Activiteit"],
+      bullets_field: ["Bullets"],
+      money: ["Money"],
+      bank: ["Bank"]
+    }
+  }
+];
+
+function detectServerProfile() {
+  const host = window.location.hostname.toLowerCase();
+  for (const profile of SERVER_PROFILES) {
+    if (profile.hostPatterns.some(pattern => host === pattern || host.endsWith("." + pattern))) {
+      return profile;
+    }
+  }
+  return SERVER_PROFILES[0];
+}
+
 
 async function getOrCreateClientId() {
   let stored = await chrome.storage.local.get("CLIENT_ID");
@@ -12,13 +146,13 @@ async function getOrCreateClientId() {
 
 const STORAGE_DEFAULTS = {
   API_URL: "http://localhost:3000",
-  ROOM: "TestRoom",
+  ROOM: "General",
   FAMILY_KEY: "",
   MANUAL_ALIAS: "",
   ENABLED: true,
   POLL_INTERVAL_MS: 1000,
   apiUrl: "http://localhost:3000",
-  room: "TestRoom",
+  room: "General",
   familyKey: "",
   manualAlias: "",
   enabled: true,
@@ -47,82 +181,67 @@ const CACHE_KEYS = {
 };
 
 const COOLDOWN_LABELS = {
-  crime: [
-    "Volgende misdaadpoging",
-    "Next crime attempt",
-  ],
-  car: [
-    "Volgende autojatpoging",
-    "Next car stealing attempt",
-  ],
-  heist: [
-    "Volgende heist",
-    "Next heist",
-  ],
-  organizedCrime: [
-    "Volgende georganiseerde misdaad",
-    "Next organized crime",
-  ],
-  megaOrganizedCrime: [
-    "Volgende mega georganiseerde misdaad",
-    "Next mega organized crime",
-  ],
-  flight: [
-    "Volgende vlucht",
-    "Next flight",
-  ],
-  bullets: [
-    "Volgende kogeltransactie",
-    "Next bullet transaction",
-  ],
-  assassination: [
-    "Volgende moordpoging",
-    "Next assassination attempt",
-  ],
-  race: [
-    "Volgende autorace",
-    "Next car race",
-  ],
-  blood: [
-    "Volgende bloedtransfusie",
-    "Next blood transfusion",
-  ],
-  spot: [
-    "Volgende spot overval",
-    "Next spot robbery",
-  ],
-  alcohol: [
-    "Drank",
-    "Alcohol",
-  ],
-  drugs: [
-    "Drugs",
-  ],
+  crime: [],
+  car: [],
+  heist: [],
+  organizedCrime: [],
+  megaOrganizedCrime: [],
+  flight: [],
+  bullets: [],
+  assassination: [],
+  race: [],
+  blood: [],
+  spot: [],
+  alcohol: [],
+  drugs: []
 };
 
 const PROFILE_FIELD_LABELS = {
-  rank: [
-    "Rank",
-    "Rang",
-  ],
-  progression: [
-    "Rank progression",
-    "Rank progress",
-    "Progress to next rank",
-    "Rang progressie",
-    "Rangvordering",
-  ],
-  activity: [
-    "Activity",
-    "Activiteit",
-  ],
+  rank: [],
+  progression: [],
+  activity: [],
+  bullets: [],
+  money: [],
+  bank: []
 };
+
+for (const profile of SERVER_PROFILES) {
+  if (profile.labelAliases) {
+    for (const [key, aliases] of Object.entries(profile.labelAliases)) {
+      if (COOLDOWN_LABELS[key]) {
+        for (const alias of aliases) {
+          if (!COOLDOWN_LABELS[key].includes(alias)) {
+            COOLDOWN_LABELS[key].push(alias);
+          }
+        }
+      } else if (key === "bullets_field") {
+        for (const alias of aliases) {
+          if (!PROFILE_FIELD_LABELS.bullets.includes(alias)) {
+            PROFILE_FIELD_LABELS.bullets.push(alias);
+          }
+        }
+      } else if (PROFILE_FIELD_LABELS[key]) {
+        for (const alias of aliases) {
+          if (!PROFILE_FIELD_LABELS[key].includes(alias)) {
+            PROFILE_FIELD_LABELS[key].push(alias);
+          }
+        }
+      }
+    }
+  }
+}
 
 const PROFILE_TABLE_HEADERS = [
   "Rank Information",
   "Rank information",
   "Rang informatie",
   "Ranginformatie",
+  "Informação de estatuto",
+  "Informação do estatuto",
+  "Informações do estatuto",
+  "Estatuto",
+  "Rütbe",
+  "Rütbe bilgisi"
 ];
 
 const NORMALIZED_LABEL_TO_KEY = buildLabelLookup(COOLDOWN_LABELS);
@@ -246,7 +365,7 @@ function isObayAuctionsPage() {
 }
 
 function getInformationIframeUrl() {
-  return "https://barafranca.nl/#/information.php";
+  return window.location.origin + "/#/information.php";
 }
 
 async function readSettings() {
@@ -268,6 +387,10 @@ async function writeStatus(updates) {
   if (Object.prototype.hasOwnProperty.call(updates, "player")) {
     payload[STATUS_KEYS.LAST_PLAYER] = updates.player;
     payload[STATUS_KEYS.lastDetectedPlayer] = updates.player;
+    const profile = detectServerProfile();
+    if (profile && profile.serverId) {
+      payload[`LAST_PLAYER_${profile.serverId.toUpperCase()}`] = updates.player;
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, "updated")) {
@@ -413,6 +536,48 @@ function findNickFromProfileClass(doc) {
   return "";
 }
 
+function findNickFromProfileTable(doc) {
+  const tables = Array.from(doc.querySelectorAll("table.thinline"));
+  const nameLabels = [
+    "status / estado",
+    "status",
+    "estado",
+    "naam",
+    "name",
+    "durum",
+    "isim",
+    "i̇sim",
+    "nome"
+  ];
+
+  for (const table of tables) {
+    const rows = Array.from(table.querySelectorAll("tr"));
+    for (const row of rows) {
+      const cells = row.querySelectorAll("td");
+      if (cells.length < 2) {
+        continue;
+      }
+
+      const labelText = normalizeText(cells[0].textContent);
+      if (nameLabels.includes(labelText)) {
+        const link = cells[1].querySelector("a");
+        if (link) {
+          const nick = decodeNickFromHref(link.getAttribute("href"));
+          if (nick) return nick;
+          const text = trimToString(link.textContent).replace(/\s+/g, " ");
+          if (text) return text;
+        }
+
+        const textVal = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+        if (textVal) {
+          return textVal;
+        }
+      }
+    }
+  }
+  return "";
+}
+
 function resolvePlayerName(manualAlias) {
   const fromCurrentPageLink = findNickLinkInDocument(document);
   if (fromCurrentPageLink) {
@@ -422,6 +587,11 @@ function resolvePlayerName(manualAlias) {
   const fromProfileClass = findNickFromProfileClass(document);
   if (fromProfileClass) {
     return fromProfileClass;
+  }
+
+  const fromProfileTable = findNickFromProfileTable(document);
+  if (fromProfileTable) {
+    return fromProfileTable;
   }
 
   if (manualAlias) {
@@ -449,6 +619,11 @@ function resolvePlayerNameFromDocument(doc, manualAlias) {
   const fromProfileClass = findNickFromProfileClass(doc);
   if (fromProfileClass) {
     return fromProfileClass;
+  }
+
+  const fromProfileTable = findNickFromProfileTable(doc);
+  if (fromProfileTable) {
+    return fromProfileTable;
   }
 
   if (manualAlias) {
@@ -498,7 +673,7 @@ function parseCooldownValue(valueCell) {
   }
 
   const valueText = normalizeText(valueCell.textContent);
-  if (valueText.includes("nu") || valueText.includes("now") || valueText.includes("ready")) {
+  if (valueText.includes("nu") || valueText.includes("now") || valueText.includes("ready") || valueText.includes("agora") || valueText.includes("simdi") || valueText.includes("şimdi")) {
     return {
       timeEnd: 0,
       ready: true,
@@ -516,7 +691,13 @@ function findWaitingTableInDocument(doc) {
     const headerText = normalizeText(header ? header.textContent : table.textContent);
     if (
       headerText.includes("wachttijden") ||
-      headerText.includes("waiting times")
+      headerText.includes("waiting times") ||
+      headerText.includes("tempos de espera") ||
+      headerText.includes("tempo de espera") ||
+      headerText.includes("espera") ||
+      headerText.includes("bekleme") ||
+      headerText.includes("bekleme sureleri") ||
+      headerText.includes("bekleme süreleri")
     ) {
       return table;
     }
@@ -581,18 +762,14 @@ function parseCooldownsFromTable(table) {
 }
 
 function matchesAnyAlias(labelText, aliases) {
-  const normalizedLabel = normalizeText(labelText);
+  const normalizedLabel = normalizeText(labelText).replace(/[:;.]/g, "").trim();
   if (!normalizedLabel) {
     return false;
   }
 
   return aliases.some((alias) => {
-    const normalizedAlias = normalizeText(alias);
-    return (
-      normalizedLabel === normalizedAlias ||
-      normalizedLabel.includes(normalizedAlias) ||
-      normalizedAlias.includes(normalizedLabel)
-    );
+    const normalizedAlias = normalizeText(alias).replace(/[:;.]/g, "").trim();
+    return normalizedLabel === normalizedAlias;
   });
 }
 
@@ -699,12 +876,24 @@ function extractProgressPercentFromCell(cell) {
 }
 
 function parseCharacterProgressionFromDocument(doc) {
-  const profileTable = findProfileTableInDocument(doc);
-  const rows = profileTable ? Array.from(profileTable.querySelectorAll("tr")) : [];
+  const tables = Array.from(doc.querySelectorAll("table.thinline"));
+  const waitingTable = findWaitingTableInDocument(doc);
+  let rows = [];
+  for (const table of tables) {
+    if (table === waitingTable) {
+      continue;
+    }
+    rows = rows.concat(Array.from(table.querySelectorAll("tr")));
+  }
 
   let rank = "";
   let progressionPercent = "";
   let activityPercent = "";
+  let bullets = "";
+  let money = "";
+  let bank = "";
+  let platingLabel = "";
+  let platingPercent = "";
   let progressRow = null;
 
   for (const row of rows) {
@@ -748,6 +937,50 @@ function parseCharacterProgressionFromDocument(doc) {
         ? trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ")
         : rowText;
       activityPercent = extractPercentValue(activityText);
+      continue;
+    }
+
+    if (!bullets && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.bullets)) {
+      bullets = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+
+    if (!money && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.money)) {
+      money = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+
+    if (!bank && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.bank)) {
+      bank = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+
+    if (cells.length >= 2 && (labelText.toLowerCase().includes("plating") || labelText.toLowerCase().includes("plaka"))) {
+      const valCell = cells[1];
+      platingPercent = extractProgressPercentFromCell(valCell);
+      
+      const labelMatch = labelText.match(/(?:plating|plaka)\s*\(([^)]+)\)/i);
+      if (labelMatch) {
+        platingLabel = trimToString(labelMatch[1]);
+      }
+      
+      if (!platingLabel) {
+        if (platingPercent) {
+          const num = parseFloat(platingPercent.replace("%", "").trim());
+          if (!isNaN(num)) {
+            if (num >= 81) platingLabel = "Very High";
+            else if (num >= 61) platingLabel = "High";
+            else if (num >= 41) platingLabel = "Medium";
+            else if (num >= 21) platingLabel = "Low";
+            else platingLabel = "Very Low";
+          } else {
+            platingLabel = "None";
+          }
+        } else {
+          platingLabel = "None";
+        }
+      }
+      continue;
     }
   }
 
@@ -761,6 +994,11 @@ function parseCharacterProgressionFromDocument(doc) {
     rank,
     progressionPercent,
     activityPercent,
+    bullets,
+    money,
+    bank,
+    platingLabel,
+    platingPercent,
   };
 }
 
@@ -999,12 +1237,18 @@ async function sendObayUpdate(settings, player, room) {
 
   const items = parseObayItemsFromPage();
   const clientId = await getOrCreateClientId();
+  const profile = detectServerProfile();
   await postObayUpdate(settings, {
     room,
     player,
     clientId,
     updatedAt: getUnixTime(),
     items,
+    serverId: profile.serverId,
+    serverName: profile.displayName,
+    hostname: window.location.hostname,
+    nickname: player,
+    timestamp: getUnixTime(),
   });
 
   return {
@@ -1063,7 +1307,7 @@ async function sendCooldownUpdate(trigger) {
         error: errorMessage,
         room: currentRoom,
       });
-      console.warn("[Omerta Family Cooldown Room]", errorMessage);
+      console.warn("[Omerta Portal]", errorMessage);
       return { ok: false, error: errorMessage };
     }
 
@@ -1072,6 +1316,7 @@ async function sendCooldownUpdate(trigger) {
 
     if (obayPage) {
       await sendObayUpdate(settings, player, currentRoom);
+      const profile = detectServerProfile();
       if (lastKnownCooldowns) {
         await postUpdate(settings, {
           room: currentRoom,
@@ -1080,6 +1325,11 @@ async function sendCooldownUpdate(trigger) {
           updatedAt: getUnixTime(),
           progression: cloneJsonSafe(lastKnownProgression || {}),
           cooldowns: cloneJsonSafe(lastKnownCooldowns),
+          serverId: profile.serverId,
+          serverName: profile.displayName,
+          hostname: window.location.hostname,
+          nickname: player,
+          timestamp: getUnixTime(),
         });
       }
 
@@ -1120,7 +1370,7 @@ async function sendCooldownUpdate(trigger) {
         error: parsed.parserError,
         room: currentRoom,
       });
-      console.warn("[Omerta Family Cooldown Room]", parsed.parserError);
+      console.warn("[Omerta Portal]", parsed.parserError);
     } else {
       await writeStatus({
         parserError: "",
@@ -1129,6 +1379,7 @@ async function sendCooldownUpdate(trigger) {
     }
 
     const clientId = await getOrCreateClientId();
+    const profile = detectServerProfile();
     const payload = {
       room: currentRoom,
       player,
@@ -1137,6 +1388,11 @@ async function sendCooldownUpdate(trigger) {
       updatedAt: getUnixTime(),
       progression: parsed.progression || {},
       cooldowns: parsed.cooldowns,
+      serverId: profile.serverId,
+      serverName: profile.displayName,
+      hostname: window.location.hostname,
+      nickname: player,
+      timestamp: getUnixTime(),
     };
 
     if (!hasParsedCooldowns && lastKnownCooldowns) {
@@ -1174,7 +1430,7 @@ async function sendCooldownUpdate(trigger) {
       error: errorMessage,
       room: currentRoom,
     });
-    console.warn("[Omerta Family Cooldown Room]", errorMessage);
+    console.warn("[Omerta Portal]", errorMessage);
     return { ok: false, error: errorMessage, nextDelayMs: PARSE_RETRY_MS };
   }
 }
@@ -1273,35 +1529,56 @@ if (!isDashboard) {
     if (!data || typeof data !== "object") return;
 
     if (data.type === "OMERTA_GET_IDENTITY") {
-      const stored = await chrome.storage.local.get({
+      const reqServerId = data.serverId ? String(data.serverId).toUpperCase() : "";
+      const lookupKeys = {
         LAST_PLAYER: "",
         lastDetectedPlayer: "",
-        ROOM: "TestRoom",
-        room: "TestRoom",
-      });
-      const player = stored.LAST_PLAYER || stored.lastDetectedPlayer || "";
-      const room = stored.ROOM || stored.room || "TestRoom";
+        ROOM: "General",
+        room: "General",
+      };
+      if (reqServerId) {
+        lookupKeys[`LAST_PLAYER_${reqServerId}`] = "";
+      }
+      const stored = await chrome.storage.local.get(lookupKeys);
+      let player = "";
+      if (reqServerId) {
+        player = stored[`LAST_PLAYER_${reqServerId}`] || "";
+      } else {
+        player = stored.LAST_PLAYER || stored.lastDetectedPlayer || "";
+      }
+      const room = stored.ROOM || stored.room || "General";
       const clientId = await getOrCreateClientId();
       window.postMessage({
         type: "OMERTA_IDENTITY",
         connected: Boolean(player),
         player,
         clientId,
-        room
+        room,
+        serverId: reqServerId
       }, "*");
     } else if (data.type === "OMERTA_SEND_CHAT") {
       try {
-        const stored = await chrome.storage.local.get({
+        const reqServerId = data.serverId ? String(data.serverId).toUpperCase() : "";
+        const lookupKeys = {
           LAST_PLAYER: "",
           lastDetectedPlayer: "",
           API_URL: "http://localhost:3000",
           apiUrl: "http://localhost:3000",
-          ROOM: "TestRoom",
-          room: "TestRoom",
-        });
-        const player = stored.LAST_PLAYER || stored.lastDetectedPlayer || "";
+          ROOM: "General",
+          room: "General",
+        };
+        if (reqServerId) {
+          lookupKeys[`LAST_PLAYER_${reqServerId}`] = "";
+        }
+        const stored = await chrome.storage.local.get(lookupKeys);
+        let player = "";
+        if (reqServerId) {
+          player = stored[`LAST_PLAYER_${reqServerId}`] || "";
+        } else {
+          player = stored.LAST_PLAYER || stored.lastDetectedPlayer || "";
+        }
         const apiUrl = stored.API_URL || stored.apiUrl || "http://localhost:3000";
-        const room = stored.ROOM || stored.room || "TestRoom";
+        const room = stored.ROOM || stored.room || "General";
         const clientId = await getOrCreateClientId();
 
         if (!player) {
@@ -1337,6 +1614,21 @@ if (!isDashboard) {
           error: error.message
         }, "*");
       }
+    } else if (data.type === "OMERTA_SET_PLAYER") {
+      try {
+        const player = String(data.player || "").trim();
+        const serverId = String(data.serverId || "").trim().toUpperCase();
+        if (player && serverId) {
+          const updateObj = {
+            LAST_PLAYER: player,
+            lastDetectedPlayer: player
+          };
+          updateObj[`LAST_PLAYER_${serverId}`] = player;
+          await chrome.storage.local.set(updateObj);
+        }
+      } catch (err) {
+        console.warn("[Omerta Extension] Failed to save active player", err);
+      }
     } else if (data.type === "OMERTA_SET_ROOM") {
       try {
         const roomName = String(data.room || "").trim();
@@ -1348,6 +1640,24 @@ if (!isDashboard) {
         }
       } catch (err) {
         console.warn("[Omerta Extension] Failed to save active room", err);
+      }
+    } else if (data.type === "OMERTA_CONNECT_ALL") {
+      try {
+        const response = await chrome.runtime.sendMessage({ type: "OMERTA_CONNECT_ALL" });
+        if (!response || !response.ok) {
+          throw new Error((response && response.error) || "Connect failed.");
+        }
+        window.postMessage({
+          type: "OMERTA_CONNECT_RESULT",
+          ok: true,
+          count: Number(response.count) || 0
+        }, "*");
+      } catch (err) {
+        window.postMessage({
+          type: "OMERTA_CONNECT_RESULT",
+          ok: false,
+          error: err && err.message ? err.message : "Connect failed."
+        }, "*");
       }
     }
   });

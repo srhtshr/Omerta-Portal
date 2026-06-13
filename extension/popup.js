@@ -11,24 +11,28 @@ async function getOrCreateClientId() {
 const DEFAULT_SETTINGS = {
   ENABLED: true,
   API_URL: "http://localhost:3000",
-  ROOM: "TestRoom",
+  ROOM: "General",
   POLL_INTERVAL_MS: 1000,
   FAMILY_KEY: "",
   MANUAL_ALIAS: "",
   LAST_PLAYER: "",
+  LAST_PLAYER_TR: "",
+  LAST_PLAYER_COM: "",
+  LAST_PLAYER_NL: "",
+  LAST_PLAYER_PT: "",
   LAST_UPDATE: "",
   LAST_ERROR: "",
-  ACTIVE_ROOM: "TestRoom",
+  ACTIVE_ROOM: "General",
   enabled: true,
   apiUrl: "http://localhost:3000",
-  room: "TestRoom",
+  room: "General",
   pollIntervalMs: 1000,
   familyKey: "",
   manualAlias: "",
   lastDetectedPlayer: "",
   lastUpdateAt: "",
   lastError: "",
-  activeRoom: "TestRoom",
+  activeRoom: "General",
 };
 
 const sendNowButton = document.getElementById("sendNowButton");
@@ -36,14 +40,32 @@ const openDashboardButton = document.getElementById("openDashboardButton");
 const settingsFeedback = document.getElementById("settingsFeedback");
 
 const statusConnection = document.getElementById("statusConnection");
-const statusPlayer = document.getElementById("statusPlayer");
 const statusUpdated = document.getElementById("statusUpdated");
-const statusCooldownsCount = document.getElementById("statusCooldownsCount");
 const statusParserError = document.getElementById("statusParserError");
 const statusRoom = document.getElementById("statusRoom");
 
-const DISPLAY_ROOM_NAME = "TestRoom";
-const STORED_ROOM_NAME = "TestRoom";
+const statusPlayerTR = document.getElementById("statusPlayerTR");
+const statusPlayerCOM = document.getElementById("statusPlayerCOM");
+const statusPlayerNL = document.getElementById("statusPlayerNL");
+const statusPlayerPT = document.getElementById("statusPlayerPT");
+
+const STORED_ROOM_NAME = "General";
+const OMERTA_TAB_PATTERNS = [
+  "*://barafranca.nl/*",
+  "*://*.barafranca.nl/*",
+  "*://barafranca.pt/*",
+  "*://*.barafranca.pt/*",
+  "*://omerta.pt/*",
+  "*://*.omerta.pt/*",
+  "*://barafranca.com.tr/*",
+  "*://*.barafranca.com.tr/*",
+  "*://omerta.com.tr/*",
+  "*://*.omerta.com.tr/*",
+  "*://barafranca.com/*",
+  "*://*.barafranca.com/*",
+  "*://omerta.dm/*",
+  "*://*.omerta.dm/*"
+];
 
 function normalizeApiUrl(value) {
   const raw = typeof value === "string" ? value.trim() : "";
@@ -53,12 +75,6 @@ function normalizeApiUrl(value) {
 function setFeedback(element, type, message) {
   element.className = "feedback" + (type ? " " + type : "");
   element.textContent = message || "";
-}
-
-function escapeHtml(value) {
-  const div = document.createElement("div");
-  div.textContent = String(value);
-  return div.innerHTML;
 }
 
 function formatDateTime(value) {
@@ -75,7 +91,8 @@ function formatDateTime(value) {
 }
 
 async function getSettings() {
-  return chrome.storage.local.get(DEFAULT_SETTINGS);
+  const all = await chrome.storage.local.get(null);
+  return { ...DEFAULT_SETTINGS, ...all };
 }
 
 function readStatusValue(settings, uppercaseKey, lowercaseKey, fallback = "") {
@@ -122,12 +139,15 @@ async function loadSettingsAndStatus() {
   const lastError = readStatusValue(settings, "LAST_ERROR", "lastError", "");
   const lastUpdate = readStatusValue(settings, "LAST_UPDATE", "lastUpdateAt", "");
   const lastParserError = readStatusValue(settings, "LAST_PARSER_ERROR", "lastParserError", "");
-  const lastCooldownsCount = readStatusValue(settings, "LAST_COOLDOWNS_COUNT", "lastCooldownsCount", "0");
-  statusPlayer.textContent = readStatusValue(settings, "LAST_PLAYER", "lastDetectedPlayer", "-") || "-";
+  
+  statusPlayerTR.textContent = settings.LAST_PLAYER_TR || "-";
+  statusPlayerCOM.textContent = settings.LAST_PLAYER_COM || "-";
+  statusPlayerNL.textContent = settings.LAST_PLAYER_NL || "-";
+  statusPlayerPT.textContent = settings.LAST_PLAYER_PT || "-";
+  
   statusUpdated.textContent = formatDateTime(lastUpdate);
-  statusCooldownsCount.textContent = String(lastCooldownsCount || "0");
   statusParserError.textContent = lastParserError || "-";
-  statusRoom.textContent = DISPLAY_ROOM_NAME;
+  statusRoom.textContent = readStatusValue(settings, "ACTIVE_ROOM", "activeRoom") || readStatusValue(settings, "ROOM", "room") || "General";
 
   if (lastError) {
     statusConnection.textContent = "Error";
@@ -141,43 +161,40 @@ async function loadSettingsAndStatus() {
   }
 }
 
-async function getActiveTab() {
+async function getOmertaTabs() {
   const tabs = await chrome.tabs.query({
-    active: true,
-    currentWindow: true,
+    url: OMERTA_TAB_PATTERNS,
   });
 
-  return tabs[0] || null;
+  return tabs.filter((tab) => typeof tab.id === "number");
 }
 
 async function sendNow() {
   await applySimplifiedDefaults();
 
-  const tab = await getActiveTab();
-  if (!tab || typeof tab.id !== "number") {
-    setFeedback(settingsFeedback, "error", "No active tab found.");
+  const tabs = await getOmertaTabs();
+  if (tabs.length === 0) {
+    setFeedback(settingsFeedback, "error", "No open Omerta tab found.");
     return;
   }
 
   try {
-    const response = await chrome.tabs.sendMessage(tab.id, {
-      type: "SEND_NOW",
-    });
+    await Promise.all(
+      tabs.map(async (tab) => {
+        await chrome.tabs.reload(tab.id);
+      })
+    );
 
-    if (!response || !response.ok) {
-      throw new Error((response && response.error) || "Content script did not complete the update.");
-    }
-
-    await loadSettingsAndStatus();
-    setFeedback(settingsFeedback, "success", "Manual update sent.");
+    window.setTimeout(() => {
+      loadSettingsAndStatus();
+    }, 2000);
+    setFeedback(settingsFeedback, "success", "Refreshing " + tabs.length + " Omerta tab(s)...");
   } catch (error) {
     await chrome.storage.local.set({ LAST_ERROR: error.message, lastError: error.message });
     await loadSettingsAndStatus();
     setFeedback(settingsFeedback, "error", error.message);
   }
 }
-
-
 
 sendNowButton.addEventListener("click", () => {
   sendNow();
@@ -186,7 +203,7 @@ sendNowButton.addEventListener("click", () => {
 openDashboardButton.addEventListener("click", async () => {
   setFeedback(settingsFeedback, "", "");
   const settings = await getSettings();
-  const player = settings.LAST_PLAYER || settings.lastDetectedPlayer || "";
+  const player = settings.LAST_PLAYER || settings.lastDetectedPlayer || settings.LAST_PLAYER_TR || settings.LAST_PLAYER_COM || settings.LAST_PLAYER_NL || settings.LAST_PLAYER_PT || "";
   
   if (player) {
     const apiUrl = normalizeApiUrl(readSettingValue(settings, "API_URL", "apiUrl", DEFAULT_SETTINGS.apiUrl));

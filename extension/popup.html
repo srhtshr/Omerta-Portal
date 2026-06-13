@@ -3,29 +3,37 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Omerta Family Cooldown Room v1.0</title>
+    <title>Omerta Portal v1.0</title>
     <link rel="stylesheet" href="popup.css">
   </head>
   <body>
     <main class="popup">
       <header class="top">
-        <h1>Omerta Family Cooldown Room v1.0</h1>
-        <p class="subtitle">Simple status and dashboard link</p>
+        <h1>Omerta Portal</h1>
+        <p class="subtitle">Dashboard connection and sync status</p>
       </header>
 
       <section class="panel">
-        <div class="panel-title">Status</div>
+        <div class="panel-title">Connection Status</div>
         <div class="status-list">
           <div class="status-row"><span>Connection</span><strong id="statusConnection">Waiting...</strong></div>
-          <div class="status-row"><span>Player</span><strong id="statusPlayer">-</strong></div>
-          <div class="status-row"><span>Room</span><strong id="statusRoom">TestRoom</strong></div>
+          <div class="status-row"><span>Active Room</span><strong id="statusRoom">General</strong></div>
           <div class="status-row"><span>Last Update</span><strong id="statusUpdated">-</strong></div>
-          <div class="status-row"><span>Cooldowns</span><strong id="statusCooldownsCount">0</strong></div>
           <div class="status-row"><span>Parser Error</span><strong id="statusParserError">-</strong></div>
         </div>
+
+        <div class="section-divider"></div>
+        <div class="panel-title-sub">Character Nicknames</div>
+        <div class="server-nicks-grid">
+          <div class="nick-chip"><span class="chip-srv">TR</span><span class="chip-name" id="statusPlayerTR">-</span></div>
+          <div class="nick-chip"><span class="chip-srv">COM</span><span class="chip-name" id="statusPlayerCOM">-</span></div>
+          <div class="nick-chip"><span class="chip-srv">NL</span><span class="chip-name" id="statusPlayerNL">-</span></div>
+          <div class="nick-chip"><span class="chip-srv">PT</span><span class="chip-name" id="statusPlayerPT">-</span></div>
+        </div>
+
         <div class="locked-room">Room is locked for this build.</div>
         <div class="button-row">
-          <button id="sendNowButton" type="button">Send Now</button>
+          <button id="sendNowButton" type="button">Connect</button>
           <button id="openDashboardButton" type="button" class="secondary">Open Dashboard</button>
         </div>
         <div id="settingsFeedback" class="feedback"></div>

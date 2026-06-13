@@ -1,8 +1,8 @@
 {
-  "name": "omerta-family-cooldown-room-server",
+  "name": "omerta-portal-server",
   "version": "0.1.0",
   "private": true,
-  "description": "Minimal Express backend for Omerta Family Cooldown Room",
+  "description": "Minimal Express backend for Omerta Portal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

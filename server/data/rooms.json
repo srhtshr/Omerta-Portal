@@ -3,7 +3,9 @@
     "ownerClientId": "",
     "ownerPlayer": "",
     "members": {},
-    "pending": {}
+    "pending": {},
+    "notes": [],
+    "targets": []
   },
   "Tayfa": {
     "ownerClientId": "client_vcd47et2sv8ww8ji0uz9y",
@@ -15,6 +17,157 @@
         "joinedAt": 1781290589
       }
     },
-    "pending": {}
+    "pending": {
+      "client_u228d7n2khqk2lsk85j3r": {
+        "player": "Tinerci",
+        "requestedAt": 1781300493
+      }
+    },
+    "notes": [],
+    "targets": []
+  },
+  "asdsad": {
+    "ownerClientId": "client_8y08y3wmzo9wnk6wm92z6q",
+    "ownerPlayer": "Babayaga",
+    "members": {
+      "client_8y08y3wmzo9wnk6wm92z6q": {
+        "player": "Babayaga",
+        "role": "owner",
+        "joinedAt": 1781353016
+      }
+    },
+    "pending": {},
+    "notes": [],
+    "targets": []
+  },
+  "asdsa": {
+    "ownerClientId": "client_8y08y3wmzo9wnk6wm92z6q",
+    "ownerPlayer": "Babayaga",
+    "members": {
+      "client_8y08y3wmzo9wnk6wm92z6q": {
+        "player": "Babayaga",
+        "role": "owner",
+        "joinedAt": 1781353055
+      }
+    },
+    "pending": {},
+    "notes": [],
+    "targets": []
+  },
+  "asdas": {
+    "ownerClientId": "client_8y08y3wmzo9wnk6wm92z6q",
+    "ownerPlayer": "Babayaga",
+    "members": {
+      "client_8y08y3wmzo9wnk6wm92z6q": {
+        "player": "Babayaga",
+        "role": "owner",
+        "joinedAt": 1781364662
+      }
+    },
+    "pending": {},
+    "notes": [],
+    "targets": []
+  },
+  "asdasds": {
+    "ownerClientId": "client_8y08y3wmzo9wnk6wm92z6q",
+    "ownerPlayer": "Babayaga",
+    "members": {
+      "client_8y08y3wmzo9wnk6wm92z6q": {
+        "player": "Babayaga",
+        "role": "owner",
+        "joinedAt": 1781356182
+      }
+    },
+    "pending": {},
+    "notes": [],
+    "targets": []
+  },
+  "General": {
+    "ownerClientId": "",
+    "ownerPlayer": "",
+    "members": {},
+    "pending": {},
+    "notes": [],
+    "targets": []
+  },
+  "General_TR": {
+    "ownerClientId": "",
+    "ownerPlayer": "",
+    "members": {},
+    "pending": {},
+    "notes": [],
+    "targets": []
+  },
+  "deneme": {
+    "ownerClientId": "client_rtkmoqjk1ts92e65vwstw7",
+    "ownerPlayer": "Babayaga",
+    "members": {
+      "client_rtkmoqjk1ts92e65vwstw7": {
+        "player": "Babayaga",
+        "role": "owner",
+        "joinedAt": 1781378128
+      }
+    },
+    "pending": {},
+    "notes": [],
+    "targets": []
+  },
+  "dfssdf": {
+    "ownerClientId": "client_wja11poya3vs4qxyjozv",
+    "ownerPlayer": "Babayaga",
+    "members": {
+      "client_wja11poya3vs4qxyjozv": {
+        "player": "Babayaga",
+        "role": "owner",
+        "joinedAt": 1781370317
+      }
+    },
+    "pending": {},
+    "notes": [],
+    "targets": []
+  },
+  "asdasda": {
+    "ownerClientId": "client_rtkmoqjk1ts92e65vwstw7",
+    "ownerPlayer": "Tinerci",
+    "members": {
+      "client_rtkmoqjk1ts92e65vwstw7": {
+        "player": "Tinerci",
+        "role": "owner",
+        "joinedAt": 1781370617
+      }
+    },
+    "pending": {},
+    "notes": [],
+    "targets": [
+      {
+        "id": "target_2law8p6_1781375727544",
+        "name": "asdas",
+        "addedBy": "Babayaga",
+        "createdAt": 1781375727,
+        "dead": false
+      }
+    ]
+  },
+  "asdasd": {
+    "ownerClientId": "client_wja11poya3vs4qxyjozv",
+    "ownerPlayer": "Babayaga",
+    "members": {
+      "client_wja11poya3vs4qxyjozv": {
+        "player": "Babayaga",
+        "role": "owner",
+        "joinedAt": 1781370685
+      }
+    },
+    "pending": {},
+    "notes": [],
+    "targets": [
+      {
+        "id": "target_25cvjy6_1781371726524",
+        "name": "babayaka",
+        "addedBy": "Babayaga",
+        "createdAt": 1781371726,
+        "dead": false
+      }
+    ]
   }
 }

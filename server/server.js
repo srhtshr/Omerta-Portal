@@ -24,6 +24,8 @@ function loadRoomsStore() {
         room.obay = room.obay || null;
         room.members = room.members || {};
         room.pending = room.pending || {};
+        room.notes = room.notes || [];
+        room.targets = room.targets || [];
       }
       return data;
     }
@@ -42,7 +44,9 @@ function saveRoomsStore(data) {
         ownerClientId: room.ownerClientId,
         ownerPlayer: room.ownerPlayer,
         members: room.members || {},
-        pending: room.pending || {}
+        pending: room.pending || {},
+        notes: room.notes || [],
+        targets: room.targets || []
       };
     }
     fs.writeFileSync(roomsFilePath, JSON.stringify(persisted, null, 2), "utf8");
@@ -52,24 +56,183 @@ function saveRoomsStore(data) {
 }
 
 const rooms = loadRoomsStore();
+let modified = false;
 if (Object.keys(rooms).length === 0) {
-  rooms["TestRoom"] = {
+  rooms["General"] = {
     ownerClientId: "",
     ownerPlayer: "",
     members: {},
     pending: {},
     players: {},
     chat: [],
-    obay: null
+    obay: null,
+    notes: [],
+    targets: []
   };
+  modified = true;
+}
+if (!rooms["General"]) {
+  rooms["General"] = {
+    ownerClientId: "",
+    ownerPlayer: "",
+    members: {},
+    pending: {},
+    players: {},
+    chat: [],
+    obay: null,
+    notes: [],
+    targets: []
+  };
+  modified = true;
+}
+if (modified) {
   saveRoomsStore(rooms);
 }
 
 app.use(cors());
 app.use(express.json());
+app.use("/icons", express.static(path.join(__dirname, "../icons")));
 
 function getServerTime() {
   return Math.floor(Date.now() / 1000);
+}
+
+const serverCooldownUnlockRanks = {
+  heist: "Shoplifter",
+  organizedcrime: "Thief",
+  megaorganizedcrime: "Assassin",
+  spot: "Soldier"
+};
+
+const serverRankOrder = {
+  "0": 0,
+  emptysuit: 0,
+  deliveryboy: 0,
+  picciotto: 1,
+  shoplifter: 2,
+  pickpocket: 3,
+  thief: 4,
+  associate: 5,
+  mobster: 6,
+  soldier: 7,
+  swindler: 8,
+  assassin: 9,
+  localchief: 10,
+  chief: 11,
+  bruglione: 12,
+  godfather: 13,
+  firstlady: 13,
+  capodecina: 13
+};
+
+function normalizeServerRankKey(value) {
+  if (!value) return "";
+  const raw = String(value).toLowerCase().trim();
+  const translationMap = {
+    "dazlak": "emptysuit",
+    "boş takım elbise": "emptysuit",
+    "bos takim elbise": "emptysuit",
+    "kurye": "deliveryboy",
+    "tetikçi": "picciotto",
+    "tetikci": "picciotto",
+    "hırsız": "shoplifter",
+    "hirsiz": "shoplifter",
+    "dükkan hırsızı": "shoplifter",
+    "dukkan hirsizi": "shoplifter",
+    "yankesici": "pickpocket",
+    "uzman hırsız": "thief",
+    "uzman hirsiz": "thief",
+    "ortak": "associate",
+    "haydut": "mobster",
+    "asker": "soldier",
+    "dolandırıcı": "swindler",
+    "dolandirici": "swindler",
+    "suikastçi": "assassin",
+    "suikastçı": "assassin",
+    "suikastci": "assassin",
+    "yerel şef": "localchief",
+    "yerel sef": "localchief",
+    "şef": "chief",
+    "sef": "chief",
+    "baba": "godfather",
+    "first lady": "firstlady",
+    "capodecina": "capodecina",
+    "winkeldief": "shoplifter",
+    "zakkenroller": "pickpocket",
+    "inbreker": "thief",
+    "oplichter": "swindler",
+    "mão-de-ferro": "emptysuit",
+    "sem terno": "emptysuit",
+    "estafeta": "deliveryboy",
+    "ladrão de lojas": "shoplifter",
+    "carteirista": "pickpocket",
+    "batedor de carteiras": "pickpocket",
+    "ladrão": "thief",
+    "associado": "associate",
+    "ganster": "mobster",
+    "gangster": "mobster",
+    "soldado": "soldier",
+    "vigarista": "swindler",
+    "assassino": "assassin",
+    "chefe local": "localchief",
+    "chefe": "chief",
+    "padrinho": "godfather"
+  };
+  if (Object.prototype.hasOwnProperty.call(translationMap, raw)) {
+    return translationMap[raw];
+  }
+  return raw.replace(/[\s_-]+/g, "").replace(/[^a-z0-9]/g, "");
+}
+
+function getServerRankOrderValue(rank) {
+  const normalized = normalizeServerRankKey(rank);
+  if (!normalized || !Object.prototype.hasOwnProperty.call(serverRankOrder, normalized)) {
+    return null;
+  }
+  return serverRankOrder[normalized];
+}
+
+function applyLockedCooldowns(cooldowns, rank) {
+  const nextCooldowns = { ...(cooldowns || {}) };
+  const playerRankValue = getServerRankOrderValue(rank);
+  if (playerRankValue === null) {
+    return nextCooldowns;
+  }
+
+  for (const [cooldownKey, unlockRank] of Object.entries(serverCooldownUnlockRanks)) {
+    const unlockRankValue = getServerRankOrderValue(unlockRank);
+    if (unlockRankValue === null || playerRankValue >= unlockRankValue) {
+      continue;
+    }
+
+    const matchingKey = Object.keys(nextCooldowns).find((key) => normalizeServerRankKey(key) === cooldownKey);
+    if (!matchingKey) {
+      continue;
+    }
+
+    nextCooldowns[matchingKey] = {
+      ...(nextCooldowns[matchingKey] || {}),
+      ready: false,
+      locked: true,
+      unlockRank
+    };
+  }
+
+  return nextCooldowns;
+}
+
+function pruneTransientTestPlayers(roomData, serverTime) {
+  if (!roomData || !roomData.players || typeof roomData.players !== "object") {
+    return;
+  }
+
+  for (const [playerKey, entry] of Object.entries(roomData.players)) {
+    const playerName = String(entry && entry.player ? entry.player : "").trim().toLowerCase();
+    const updatedAt = Number(entry && entry.updatedAt);
+    if (playerName === "testplayer" && Number.isFinite(updatedAt) && serverTime - updatedAt > 300) {
+      delete roomData.players[playerKey];
+    }
+  }
 }
 
 function renderDashboardHtml() {
@@ -78,7 +241,7 @@ function renderDashboardHtml() {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Omerta Family Cooldown Room v1.0</title>
+    <title>Omerta Portal v1.0</title>
     <style>
       :root {
         color-scheme: dark;
@@ -129,6 +292,105 @@ function renderDashboardHtml() {
         margin-right: auto;
       }
 
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .topbar-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+        text-decoration: none;
+        font-size: 12px;
+        font-weight: 700;
+        transition: all 0.2s ease;
+      }
+
+      .topbar-link:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .nicknames-strip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+
+      .nickname-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(23, 29, 39, 0.92);
+        text-decoration: none;
+        transition: all 0.2s ease;
+        width: 160px;
+      }
+
+      .nickname-card:hover {
+        border-color: var(--accent);
+        box-shadow: 0 0 10px rgba(90, 169, 255, 0.18);
+      }
+
+      .connect-button-card {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: linear-gradient(180deg, #2b71c8 0%, #1f5ca8 100%);
+        color: var(--text);
+        font-weight: 700;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        width: 160px;
+        box-sizing: border-box;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      }
+
+      .connect-button-card:hover:not(:disabled) {
+        border-color: var(--accent);
+        box-shadow: 0 0 10px rgba(90, 169, 255, 0.3);
+        filter: brightness(1.08);
+      }
+
+      .connect-button-card:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .nickname-server {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.4px;
+      }
+
+      .nickname-player {
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
       .input,
       .button {
         border: 1px solid var(--border);
@@ -163,7 +425,7 @@ function renderDashboardHtml() {
 
       .layout {
         display: grid;
-        grid-template-columns: minmax(0, 3.1fr) minmax(280px, 0.9fr);
+        grid-template-columns: minmax(0, 2.8fr) minmax(360px, 1.15fr);
         gap: 12px;
       }
 
@@ -175,9 +437,179 @@ function renderDashboardHtml() {
         backdrop-filter: blur(10px);
       }
 
+      .server-chip {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px 10px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        user-select: none;
+      }
+
+      .server-chip:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: var(--muted);
+      }
+
+      .server-chip.active {
+        background: rgba(90, 169, 255, 0.1);
+        border-color: var(--accent);
+        box-shadow: 0 0 8px rgba(90, 169, 255, 0.2);
+      }
+
+      .server-chip-name {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text);
+        letter-spacing: 0.3px;
+      }
+
+      .server-chip-status {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        transition: all 0.2s ease;
+      }
+
+      .server-chip.has-players .server-chip-status {
+        background: var(--green);
+        box-shadow: 0 0 6px var(--green);
+      }
+
+      .server-chip.no-players .server-chip-status {
+        background: var(--gray);
+      }
+
+      .server-chip.no-players {
+        opacity: 0.6;
+      }
+
+      .server-chip.no-players:hover {
+        opacity: 0.9;
+      }
+
+      .quick-links-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+      }
+
+      #rankFilterSelect {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background-color: rgba(23, 29, 39, 0.95);
+        color: var(--text);
+        padding: 4px 8px;
+        font-size: 11px;
+        width: 120px;
+        outline: none;
+        transition: border-color 0.15s ease;
+        cursor: pointer;
+        height: 23px;
+      }
+
+      #rankFilterSelect:hover {
+        border-color: var(--accent);
+      }
+
+      #rankFilterSelect option {
+        background-color: var(--panel-2);
+        color: var(--text);
+      }
+
+      #myCharacterFilterBtn {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background-color: rgba(23, 29, 39, 0.95);
+        color: var(--text);
+        padding: 4px 8px;
+        font-size: 11px;
+        min-width: 120px;
+        outline: none;
+        transition: all 0.15s ease;
+        cursor: pointer;
+        height: 23px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+      }
+
+      #myCharacterFilterBtn:hover {
+        border-color: var(--accent);
+      }
+
+      #myCharacterFilterBtn.active {
+        border-color: var(--accent);
+        background: linear-gradient(180deg, #2b71c8 0%, #1f5ca8 100%);
+        box-shadow: 0 0 8px rgba(90, 169, 255, 0.3);
+      }
+
+      .quick-link-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        flex: 0 0 auto;
+        text-decoration: none;
+        color: var(--muted);
+        transition: all 0.2s ease;
+        cursor: pointer;
+      }
+
+      .quick-link-title {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        opacity: 0.8;
+      }
+
+      .quick-link-icon {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+      }
+
+      .quick-link-item:hover {
+        color: var(--accent);
+      }
+
+      .quick-link-item:hover .quick-link-icon {
+        transform: translateY(-2px);
+        box-shadow: 0 0 8px rgba(90, 169, 255, 0.6);
+        filter: brightness(1.1);
+      }
+
+      .quick-link-spacer {
+        width: 1px;
+        height: 24px;
+        background: var(--border);
+        margin: 0 4px;
+        align-self: flex-end;
+      }
+
+      .table-filters {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 8px 14px 0;
+      }
+
       .main-column {
         display: grid;
         gap: 12px;
+        align-content: start;
       }
 
       .panel-header {
@@ -320,23 +752,31 @@ function renderDashboardHtml() {
 
       th:nth-child(2),
       td:nth-child(2) {
-        width: 92px;
+        width: 78px;
       }
 
       th:nth-child(3),
-      td:nth-child(3),
+      td:nth-child(3) {
+        width: 76px;
+      }
+
       th:nth-child(4),
       td:nth-child(4) {
-        width: 104px;
+        width: 68px;
       }
 
       th:nth-child(5),
       td:nth-child(5) {
-        width: 58px;
+        width: 65px;
       }
 
-      th:nth-child(n + 6):nth-child(-n + 18),
-      td:nth-child(n + 6):nth-child(-n + 18) {
+      th:nth-child(6),
+      td:nth-child(6) {
+        width: 80px;
+      }
+
+      th:nth-child(n + 7):nth-child(-n + 19),
+      td:nth-child(n + 7):nth-child(-n + 19) {
         width: 58px;
         overflow: visible;
         text-overflow: clip;
@@ -347,6 +787,13 @@ function renderDashboardHtml() {
       td:last-child {
         width: 70px;
       }
+
+      .plating-very-high { color: var(--green); font-weight: bold; }
+      .plating-high { color: #8ae234; font-weight: bold; }
+      .plating-medium { color: var(--yellow); font-weight: bold; }
+      .plating-low { color: #ff9f43; font-weight: bold; }
+      .plating-very-low { color: var(--red); font-weight: bold; }
+      .plating-none { color: var(--gray); }
 
       td:nth-child(2),
       td:nth-child(3) {
@@ -370,6 +817,12 @@ function renderDashboardHtml() {
       .player-name {
         color: var(--yellow);
         font-weight: 700;
+        text-decoration: none;
+      }
+
+      .player-name:hover {
+        text-decoration: none;
+        filter: brightness(1.15);
       }
 
       .rank-name {
@@ -422,19 +875,21 @@ function renderDashboardHtml() {
       }
 
       .chat {
-        display: grid;
-        grid-template-rows: auto 1fr auto;
+        display: flex;
+        flex-direction: column;
+        height: 560px;
         min-height: 560px;
       }
 
       .chat-messages {
         padding: 12px;
-        overflow: auto;
+        overflow-y: auto;
         display: flex;
         flex-direction: column;
         gap: 8px;
-        max-height: 460px;
-        background: #0b141a; /* WhatsApp dark theme bg */
+        flex: 1 1 auto;
+        min-height: 160px;
+        background: #0b141a;
       }
 
       .chat-empty {
@@ -454,41 +909,123 @@ function renderDashboardHtml() {
         line-height: 1.3;
         position: relative;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        border: 1px solid transparent;
       }
 
       .chat-item.own {
-        align-self: flex-end;
+        align-self: flex-start;
         background: #005c4b; /* WhatsApp own bubble color */
         color: #edf2f7;
-        border-bottom-right-radius: 2px;
+      }
+
+      .chat-item.own:hover {
+        background: #0a6f5a;
+        border-color: rgba(141, 194, 255, 0.35);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
       }
 
       .chat-item.other {
         align-self: flex-start;
         background: #202c33; /* WhatsApp other bubble color */
         color: #edf2f7;
-        border-bottom-left-radius: 2px;
       }
 
       .chat-content {
         word-break: break-word;
       }
 
+      .chat-actions {
+        display: flex;
+        align-items: center;
+      }
+
+      .chat-meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 4px;
+      }
+
+      .chat-reply-button {
+        border: 0;
+        background: transparent;
+        color: var(--accent);
+        font-size: 10px;
+        font-weight: 700;
+        cursor: pointer;
+        padding: 0;
+      }
+
+      .chat-reply-button:hover {
+        color: #8dc2ff;
+      }
+
       .chat-player {
         color: var(--yellow);
         font-weight: 700;
         margin-right: 4px;
+        text-decoration: none;
+        border-radius: 3px;
+        padding: 0 2px;
+        transition: color 0.15s, background 0.15s;
+        cursor: pointer;
+      }
+
+      .chat-player:hover {
+        color: var(--accent);
+        background: rgba(90, 169, 255, 0.12);
+        text-decoration: underline;
       }
 
       .chat-text {
         color: var(--text);
       }
 
+      .chat-keyword {
+        color: var(--yellow);
+        font-weight: 700;
+      }
+
+      .chat-template-icon {
+        margin-right: 4px;
+      }
+
+      .chat-location {
+        text-transform: uppercase;
+        color: #ffffff;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+      }
+
+      .chat-item.template-message {
+        border-color: rgba(255, 214, 102, 0.22);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.24);
+      }
+
+      .chat-item.template-message.own {
+        background: linear-gradient(135deg, #0c6b58 0%, #07584a 100%);
+      }
+
+      .chat-item.template-message.other {
+        background: linear-gradient(135deg, #263847 0%, #1d2d38 100%);
+      }
+
+      .chat-item.template-message .chat-keyword {
+        color: #7fd3ff !important;
+        font-weight: 800;
+        text-shadow: 0 0 8px rgba(127, 211, 255, 0.18);
+      }
+
+      .chat-item.template-message .chat-location {
+        color: #ffffff !important;
+        font-weight: 800;
+      }
+
       .chat-time {
-        align-self: flex-end;
         color: #8696a0; /* WhatsApp muted gray time */
         font-size: 8px;
-        margin-top: 3px;
         white-space: nowrap;
       }
 
@@ -497,6 +1034,27 @@ function renderDashboardHtml() {
         border-top: 1px solid var(--border);
         display: grid;
         gap: 6px;
+      }
+
+      .chat-shortcuts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .chat-shortcut {
+        padding: 4px 8px;
+        font-size: 10px;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .chat-shortcut:hover {
+        border-color: var(--accent);
+        color: var(--accent);
       }
 
       .chat-row {
@@ -553,10 +1111,10 @@ function renderDashboardHtml() {
         display: flex;
         gap: 8px;
         align-items: center;
-        margin-bottom: 14px;
         flex-wrap: wrap;
-        border-bottom: 1px solid var(--border);
-        padding-bottom: 10px;
+        padding: 4px 0;
+        margin-top: -6px;
+        margin-bottom: -4px;
       }
 
       .room-tab {
@@ -607,17 +1165,156 @@ function renderDashboardHtml() {
         color: white;
       }
 
+      .chat-pin-button {
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        cursor: pointer;
+        padding: 0;
+        margin-left: 6px;
+      }
+
+      .chat-pin-button:hover {
+        color: var(--yellow);
+      }
+
+      .target-item,
+      .note-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 11px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+
+      .target-name {
+        font-weight: 700;
+        color: var(--accent);
+        cursor: pointer;
+      }
+      .delete-btn {
+        appearance: none;
+        background: transparent;
+        border: 0;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 1;
+        padding: 2px 4px;
+        transition: color 0.15s;
+      }
+
+      .delete-btn:hover {
+        color: var(--red);
+      }
+
+      .skull-btn {
+        appearance: none;
+        background: transparent;
+        border: 0;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1;
+        padding: 2px 4px;
+        transition: color 0.15s, filter 0.15s;
+        flex-shrink: 0;
+      }
+
+      .skull-btn:hover {
+        color: var(--red);
+        filter: drop-shadow(0 0 4px rgba(255,107,107,0.7));
+      }
+
+      .skull-btn.is-dead {
+        color: var(--red);
+        filter: drop-shadow(0 0 5px rgba(255,107,107,0.5));
+      }
+
+      .target-item {
+        display: flex;
+        align-items: center;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 6px 8px;
+        gap: 4px;
+        transition: opacity 0.3s, border-color 0.3s;
+      }
+
+      .target-item.is-dead {
+        opacity: 0.38;
+        border-color: rgba(255,107,107,0.25);
+        background: rgba(255,107,107,0.04);
+      }
+
+      .target-item.is-dead .target-name {
+        text-decoration: line-through;
+        color: var(--muted);
+      }
+
+      .target-name {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text);
+        text-decoration: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: color 0.3s;
+      }
+
+      .target-name:hover {
+        color: var(--accent);
+        filter: brightness(1.15);
+      }
+
+      .note-item {
+        display: flex;
+        align-items: flex-start;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 6px 8px;
+        gap: 4px;
+      }
+
+      .added-by-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 9px;
+        color: var(--muted);
+        font-weight: 600;
+        margin-top: 1px;
+      }
+
+      .item-meta {
+        font-size: 9px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+
       @media (max-width: 1100px) {
         .layout {
           grid-template-columns: 1fr;
         }
 
+
+
         .chat {
-          min-height: 0;
+          height: 560px;
+          min-height: 560px;
         }
 
         .chat-messages {
-          max-height: 320px;
+          min-height: 160px;
         }
       }
     </style>
@@ -625,85 +1322,126 @@ function renderDashboardHtml() {
   <body>
     <div class="page">
       <div class="topbar">
-        <div class="brand">Omerta Family Cooldown Room v1.0</div>
-        <input id="roomInput" type="hidden" value="TestRoom">
-        <input id="searchInput" class="input search-input" type="text" placeholder="Search player..." autocomplete="off" title="Filter players by name">
+        <div class="brand">Omerta Portal v1.0</div>
+        <div class="topbar-actions">
+          <a id="downloadExtensionLink" class="topbar-link" href="#" onclick="event.preventDefault();" title="Extension download link will be updated here later.">Download Extension</a>
+        </div>
+        <input id="roomInput" type="hidden" value="General">
         <button id="applyRoomButton" class="button" type="button" style="display: none;">Open Room</button>
       </div>
 
-      <!-- Room Bar -->
-      <div class="room-bar">
-        <div id="roomTabsContainer" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
-        <div style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
-          <input id="newRoomInput" class="input" type="text" placeholder="Room Name..." style="min-width: 140px; padding: 6px 10px;" maxlength="32">
-          <button id="createRoomBtn" class="button" type="button" style="padding: 6px 12px;">Create</button>
-          <button id="joinRoomBtn" class="button" type="button" style="padding: 6px 12px;">Join</button>
-        </div>
-      </div>
-
-      <!-- Unauthorized View overlay -->
-      <div id="unauthorizedView" style="display: none; padding: 40px; text-align: center; background: rgba(23, 29, 39, 0.92); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 14px; backdrop-filter: blur(10px);">
-         <div id="unauthorizedIcon" style="font-size: 48px; margin-bottom: 16px;">🔒</div>
-         <h2 id="unauthorizedTitle" style="margin: 0 0 10px 0;">Access Restricted</h2>
-         <p id="unauthorizedMessage" style="color: var(--muted); margin-bottom: 20px; font-size: 14px;">You are not a member of this room.</p>
-         <button id="unauthorizedJoinBtn" class="button" style="display: none; padding: 8px 16px;">Join Room</button>
+      <div class="nicknames-strip">
+        <a id="nicknameCardTR" class="nickname-card" href="https://omerta.com.tr/index.php#/information.php" target="_blank" rel="noopener noreferrer">
+          <span class="nickname-server">TR</span>
+          <span id="nicknamePlayerTR" class="nickname-player">-</span>
+        </a>
+        <a id="nicknameCardCOM" class="nickname-card" href="https://barafranca.com/index.php#/information.php" target="_blank" rel="noopener noreferrer">
+          <span class="nickname-server">COM</span>
+          <span id="nicknamePlayerCOM" class="nickname-player">-</span>
+        </a>
+        <a id="nicknameCardNL" class="nickname-card" href="https://barafranca.nl/index.php#/information.php" target="_blank" rel="noopener noreferrer">
+          <span class="nickname-server">NL</span>
+          <span id="nicknamePlayerNL" class="nickname-player">-</span>
+        </a>
+        <a id="nicknameCardPT" class="nickname-card" href="https://omerta.pt/index.php#/information.php" target="_blank" rel="noopener noreferrer">
+          <span class="nickname-server">PT</span>
+          <span id="nicknamePlayerPT" class="nickname-player">-</span>
+        </a>
+        <button id="dashboardConnectBtn" class="button connect-button-card" type="button">Connect</button>
       </div>
 
       <div class="layout">
         <div class="main-column">
-          <!-- Room Administration (Owner) Panel -->
-          <section id="adminPanel" class="panel" style="display: none; margin-bottom: 12px;">
-            <div class="panel-header">
-              <div class="panel-title">Room Administration (Owner)</div>
-            </div>
-            <div style="padding: 12px; display: grid; grid-template-columns: 1fr 1.2fr; gap: 12px;">
-              <div>
-                <h4 style="margin: 0 0 8px 0; font-size: 12px; color: var(--yellow);">Pending Requests</h4>
-                <div style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: rgba(0,0,0,0.15);">
-                  <table style="width: 100%;">
-                    <thead>
-                      <tr>
-                        <th style="font-size: 10px; padding: 4px; text-align: left; padding-left: 8px;">Player</th>
-                        <th style="font-size: 10px; padding: 4px;">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody id="pendingTableBody">
-                      <tr>
-                        <td colspan="2" class="muted" style="padding: 8px; font-size: 10px;">No pending requests.</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div>
-                <h4 style="margin: 0 0 8px 0; font-size: 12px; color: var(--accent);">Room Members</h4>
-                <div style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: rgba(0,0,0,0.15);">
-                  <table style="width: 100%;">
-                    <thead>
-                      <tr>
-                        <th style="font-size: 10px; padding: 4px; text-align: left; padding-left: 8px;">Player</th>
-                        <th style="font-size: 10px; padding: 4px; text-align: left; padding-left: 8px;">Role</th>
-                        <th style="font-size: 10px; padding: 4px;">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody id="membersTableBody">
-                      <tr>
-                        <td colspan="3" class="muted" style="padding: 8px; font-size: 10px;">No members.</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </section>
+          <!-- Unauthorized View overlay -->
+          <div id="unauthorizedView" style="display: none; padding: 40px; text-align: center; background: rgba(23, 29, 39, 0.92); border: 1px solid var(--border); border-radius: 14px; backdrop-filter: blur(10px);">
+             <div id="unauthorizedIcon" style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+             <h2 id="unauthorizedTitle" style="margin: 0 0 10px 0;">Access Restricted</h2>
+             <p id="unauthorizedMessage" style="color: var(--muted); margin-bottom: 20px; font-size: 14px;">You are not a member of this room.</p>
+             <button id="unauthorizedJoinBtn" class="button" style="display: none; padding: 8px 16px;">Join Room</button>
+          </div>
 
-          <section class="panel">
+          <section id="cooldownsPanel" class="panel">
             <div class="panel-header">
-              <div>
-                <div id="roomTitle" class="panel-title">TestRoom</div>
-                <div id="stateMeta" class="status-line">Waiting for room selection.</div>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div id="roomTitle" style="display: none;">General</div>
+                <div class="server-chip" id="card-tr" onclick="selectServer('tr')">
+                  <span class="server-chip-name" id="name-tr">TR (0)</span>
+                  <div class="server-chip-status" id="status-tr"></div>
+                </div>
+                <div class="server-chip" id="card-com" onclick="selectServer('com')">
+                  <span class="server-chip-name" id="name-com">COM (0)</span>
+                  <div class="server-chip-status" id="status-com"></div>
+                </div>
+                <div class="server-chip" id="card-nl" onclick="selectServer('nl')">
+                  <span class="server-chip-name" id="name-nl">NL (0)</span>
+                  <div class="server-chip-status" id="status-nl"></div>
+                </div>
+                <div class="server-chip" id="card-pt" onclick="selectServer('pt')">
+                  <span class="server-chip-name" id="name-pt">PT (0)</span>
+                  <div class="server-chip-status" id="status-pt"></div>
+                </div>
+                <div id="stateMeta" class="status-line" style="margin-left: 8px;">Waiting for room selection.</div>
+                <form id="playerProfileSearchForm" style="display: inline-flex; align-items: center; margin-left: 14px; gap: 4px;" onsubmit="handlePlayerProfileSearch(event)">
+                  <input id="playerSearchInput" type="text" placeholder="Search player profile..." style="border: 1px solid var(--border); border-radius: 6px; background: rgba(0, 0, 0, 0.2); color: var(--text); padding: 4px 8px; font-size: 11px; width: 140px; outline: none; transition: border-color 0.15s ease;" autocomplete="off" title="Enter character name and press Enter or Go">
+                  <button type="submit" style="background: linear-gradient(180deg, #2b71c8 0%, #1f5ca8 100%); border: none; border-radius: 6px; color: var(--text); padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: filter 0.15s;" onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter='none'">Go</button>
+                </form>
+                <select id="rankFilterSelect">
+                  <option value="">All ranks</option>
+                </select>
+                <button id="myCharacterFilterBtn" type="button">Character: -</button>
               </div>
-              <a class="panel-link" href="https://barafranca.nl/#/garage.php" target="_blank" rel="noopener noreferrer">Garage</a>
+              <div class="quick-links-container" id="quickLinks">
+                <a class="quick-link-item" id="link-crims" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Crims</span>
+                  <img class="quick-link-icon" src="/icons/Crims.png" alt="Crims">
+                </a>
+                <a class="quick-link-item" id="link-car" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Car</span>
+                  <img class="quick-link-icon" src="/icons/Car.png" alt="Car">
+                </a>
+                <a class="quick-link-item" id="link-smuggling" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Smuggling</span>
+                  <img class="quick-link-icon" src="/icons/Alchol-Drugs.png" alt="Smuggling">
+                </a>
+                <a class="quick-link-item" id="link-groupCrimes" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Crimes</span>
+                  <img class="quick-link-icon" src="/icons/Crimes.png" alt="Crimes">
+                </a>
+                <a class="quick-link-item" id="link-races" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Races</span>
+                  <img class="quick-link-icon" src="/icons/Races.png" alt="Races">
+                </a>
+                <a class="quick-link-item" id="link-bullet" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Bullet</span>
+                  <img class="quick-link-icon" src="/icons/Bullet.png" alt="Bullet">
+                </a>
+                
+                <div class="quick-link-spacer"></div>
+ 
+                <a class="quick-link-item" id="link-kill" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Kill</span>
+                  <img class="quick-link-icon" src="/icons/Kill.png" alt="Kill">
+                </a>
+                <a class="quick-link-item" id="link-hospital" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Hospital</span>
+                  <img class="quick-link-icon" src="/icons/Hospital.png" alt="Hospital">
+                </a>
+ 
+                <div class="quick-link-spacer"></div>
+ 
+                <a class="quick-link-item" id="link-fly" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Fly</span>
+                  <img class="quick-link-icon" src="/icons/Fly.png" alt="Fly">
+                </a>
+                <a class="quick-link-item" id="link-market" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Market</span>
+                  <img class="quick-link-icon" src="/icons/Market.png" alt="Market">
+                </a>
+                <a class="quick-link-item" id="link-garage" href="#" target="_blank" rel="noopener noreferrer">
+                  <span class="quick-link-title">Garage</span>
+                  <img class="quick-link-icon" src="/icons/Garage.png" alt="Garage">
+                </a>
+              </div>
             </div>
             <div class="table-wrap">
               <table>
@@ -714,39 +1452,50 @@ function renderDashboardHtml() {
                     <th title="Rank"><button id="rankSortButton" class="sortable-header" type="button">Rank</button></th>
                     <th title="Progress">Progress</th>
                     <th title="Activity">Activity</th>
-                    <th title="Crims"><a class="header-link" href="https://barafranca.nl/#/?module=Crimes" target="_blank" rel="noopener noreferrer">Crims</a></th>
-                    <th title="Car"><a class="header-link" href="https://barafranca.nl/#/?module=Cars" target="_blank" rel="noopener noreferrer">Car</a></th>
+                    <th title="Plating">Plating</th>
+                    <th title="Crims">Crims</th>
+                    <th title="Car">Car</th>
                     <th title="Race">Race</th>
-                    <th title="Heist"><a class="header-link" href="https://barafranca.nl/#/?module=GroupCrimes" target="_blank" rel="noopener noreferrer">Heist</a></th>
-                    <th title="Oc"><a class="header-link" href="https://barafranca.nl/#/?module=GroupCrimes" target="_blank" rel="noopener noreferrer">Oc</a></th>
-                    <th title="Moc"><a class="header-link" href="https://barafranca.nl/#/?module=GroupCrimes" target="_blank" rel="noopener noreferrer">Moc</a></th>
-                    <th title="Spots"><a class="header-link" href="https://barafranca.nl/#/?module=GroupCrimes" target="_blank" rel="noopener noreferrer">Spots</a></th>
-                    <th title="Alchol"><a class="header-link" href="https://barafranca.nl/#/smuggling.php" target="_blank" rel="noopener noreferrer">Alchol</a></th>
-                    <th title="Drug"><a class="header-link" href="https://barafranca.nl/#/smuggling.php" target="_blank" rel="noopener noreferrer">Drug</a></th>
-                    <th title="Bullet"><a class="header-link" href="https://barafranca.nl/#/bullets2.php" target="_blank" rel="noopener noreferrer">Bullet</a></th>
-                    <th title="Kill"><a class="header-link" href="https://barafranca.nl/#/?module=Detectives" target="_blank" rel="noopener noreferrer">Kill</a></th>
-                    <th title="Blood"><a class="header-link" href="https://barafranca.nl/?module=Bloodbank" target="_blank" rel="noopener noreferrer">Blood</a></th>
-                    <th title="Fly"><a class="header-link" href="https://barafranca.nl/#/?module=Travel" target="_blank" rel="noopener noreferrer">Fly</a></th>
+                    <th title="Heist">Heist</th>
+                    <th title="Oc">Oc</th>
+                    <th title="Moc">Moc</th>
+                    <th title="Spots">Spots</th>
+                    <th title="Alchol">Alchol</th>
+                    <th title="Drug">Drug</th>
+                    <th title="Bullet">Bullet</th>
+                    <th title="Kill">Kill</th>
+                    <th title="Blood">Blood</th>
+                    <th title="Fly">Fly</th>
                     <th title="Update">Update</th>
                   </tr>
                 </thead>
                 <tbody id="cooldownTableBody">
                   <tr>
-                    <td colspan="19" class="muted">No room selected.</td>
+                    <td colspan="20" class="muted">No room selected.</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </section>
 
-          <section class="panel">
+          <!-- Room Bar -->
+          <div id="roomBar" class="room-bar">
+            <div id="roomTabsContainer" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+            <div style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
+              <input id="newRoomInput" class="input" type="text" placeholder="Room Name..." style="min-width: 140px; padding: 6px 10px;" maxlength="32">
+              <button id="createRoomBtn" class="button" type="button" style="padding: 6px 12px;">Create</button>
+              <button id="joinRoomBtn" class="button" type="button" style="padding: 6px 12px;">Join</button>
+            </div>
+          </div>
+
+          <section id="obayPanel" class="panel">
             <div class="panel-header">
               <div>
                 <button id="obayToggleButton" class="toggle-button panel-title" type="button">Obay Auctions</button>
                 <div id="obayMeta" class="status-line">No Obay data loaded.</div>
               </div>
             </div>
-            <div id="obayPanelBody" class="obay-panel-body collapsed">
+            <div id="obayPanelBody" class="obay-panel-body">
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -769,17 +1518,87 @@ function renderDashboardHtml() {
           </section>
         </div>
 
-        <aside class="panel chat">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title">Room Chat</div>
-              <div id="chatMeta" class="status-line">No messages loaded.</div>
+        <aside id="chatPanel" class="panel chat" style="position: relative;">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; gap: 6px;">
+            <div style="flex: 1; min-width: 0; overflow: hidden;">
+              <div id="chatPanelTitle" class="panel-title" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Room Name">Room</div>
+              <div id="chatMeta" class="status-line" style="display: none;">No messages loaded.</div>
+            </div>
+            <!-- Targets & Notes header buttons - only visible in private rooms -->
+            <div id="notesPanelHeaderButtons" style="display: none; gap: 4px; align-items: center; flex-shrink: 0;">
+              <button id="headerTargetsBtn" type="button" class="button" style="padding: 3px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: bold; white-space: nowrap;" onclick="toggleHeaderTab('targets')">
+                🎯 Targets (<span id="targetsCount">0</span>)
+              </button>
+              <button id="headerNotesBtn" type="button" class="button" style="padding: 3px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: bold; white-space: nowrap;" onclick="toggleHeaderTab('notes')">
+                📝 Notes (<span id="notesCount">0</span>)
+              </button>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+              <button id="chatSoundToggleBtn" type="button" class="button" style="padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--text); font-weight: bold; flex-shrink: 0;" onclick="toggleChatSound()">
+                🔊 Sound: ON
+              </button>
+              <button id="chatAdminToggleBtn" type="button" class="button" style="display: none; padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--yellow); font-weight: bold; flex-shrink: 0;" onclick="toggleChatAdmin()">
+                🛡️ Admin
+              </button>
             </div>
           </div>
+
+          <!-- Collapsible Targets & Notes Panel body (only visible in private rooms, toggled by header buttons) -->
+          <div id="notesPanel" class="chat-notes-panel" style="display: none; border-bottom: 1px solid var(--border); background: var(--panel-2);">
+            <div id="notesPanelBody" style="padding: 10px 12px 12px 12px; background: rgba(0,0,0,0.15);">
+              <!-- Targets Tab View -->
+              <div id="tabTargetsView">
+                <form id="addTargetForm" style="display: flex; gap: 6px; margin-bottom: 8px;" onsubmit="handleNewTarget(event)">
+                  <input id="targetNameInput" class="input" type="text" placeholder="Target name..." style="flex: 1; min-width: 0; padding: 4px 8px; font-size: 11px; height: 26px;" autocomplete="off" required>
+                  <button type="submit" class="button" style="padding: 0 10px; font-size: 11px; font-weight: bold; height: 26px;">Add</button>
+                </form>
+                <div id="targetsListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; max-height: 140px; overflow-y: auto; padding-right: 2px;">
+                  <span class="muted" style="font-size: 10px;">No targets added yet.</span>
+                </div>
+              </div>
+              <!-- Notes Tab View -->
+              <div id="tabNotesView" style="display: none;">
+                <form id="addNoteForm" style="display: flex; gap: 6px; margin-bottom: 8px;" onsubmit="handleNewNote(event)">
+                  <input id="noteTextInput" class="input" type="text" placeholder="Note text (safehouse coords, planning)..." style="flex: 1; min-width: 0; padding: 4px 8px; font-size: 11px; height: 26px;" autocomplete="off" required>
+                  <button type="submit" class="button" style="padding: 0 10px; font-size: 11px; font-weight: bold; height: 26px;">Add</button>
+                </form>
+                <div id="notesListContainer" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto; padding-right: 2px;">
+                  <span class="muted" style="font-size: 10px;">No notes added yet.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Compact Chat Administration Panel Overlay -->
+          <div id="chatAdminPanel" style="display: none; position: absolute; top: 42px; left: 10px; right: 10px; background: #171d27; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7); z-index: 100; padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 6px;">
+              <span style="font-size: 11px; font-weight: bold; color: var(--yellow);">Room Administration</span>
+              <button type="button" style="font-size: 14px; color: var(--muted); border: none; background: transparent; cursor: pointer; line-height: 1; padding: 0 4px;" onclick="toggleChatAdmin()">✕</button>
+            </div>
+            <div id="chatAdminContent" style="display: grid; grid-template-columns: 1fr 1.1fr; gap: 8px; font-size: 10px;">
+              <div>
+                <div style="font-weight: bold; color: var(--yellow); margin-bottom: 4px;">Pending:</div>
+                <div id="compactPendingList" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
+              </div>
+              <div>
+                <div style="font-weight: bold; color: var(--accent); margin-bottom: 4px;">Members:</div>
+                <div id="compactMembersList" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="chatPinnedContainer" style="display:none; border-bottom:1px solid var(--border); background:rgba(90,169,255,.08);"></div>
+          
           <div id="chatMessages" class="chat-messages">
             <div class="chat-empty">Select a room to load chat.</div>
           </div>
           <form id="chatForm" class="chat-form">
+            <div class="chat-shortcuts">
+              <button class="chat-shortcut" type="button" data-template="Heist">🔎 Heist</button>
+              <button class="chat-shortcut" type="button" data-template="OC">🔎 OC</button>
+              <button class="chat-shortcut" type="button" data-template="MOC">🔎 MOC</button>
+              <button class="chat-shortcut" type="button" data-template="Race">🔎 Race</button>
+            </div>
             <div class="chat-row" style="position: relative; display: flex; gap: 6px;">
               <textarea id="messageInput" class="input" maxlength="300" placeholder="Write a room message..." style="flex: 1;"></textarea>
               <button id="emojiButton" class="button" type="button" style="padding: 0 10px; font-size: 16px; background: var(--panel-2); border-color: var(--border);" title="Insert Emoji">😀</button>
@@ -805,7 +1624,7 @@ function renderDashboardHtml() {
                 <span class="emoji-item">🚀</span>
                 <span class="emoji-item">💰</span>
                 <span class="emoji-item">🔫</span>
-                <span class="emoji-item">🛩️</span>
+                <span class="emoji-item">🛡️</span>
                 <span class="emoji-item">🍺</span>
                 <span class="emoji-item">💊</span>
               </div>
@@ -821,12 +1640,18 @@ function renderDashboardHtml() {
 
     <script>
       const roomInput = document.getElementById("roomInput");
-      const searchInput = document.getElementById("searchInput");
       const applyRoomButton = document.getElementById("applyRoomButton");
       const roomTitle = document.getElementById("roomTitle");
       const stateMeta = document.getElementById("stateMeta");
       const rankSortButton = document.getElementById("rankSortButton");
       const obayToggleButton = document.getElementById("obayToggleButton");
+      const rankFilterSelect = document.getElementById("rankFilterSelect");
+      const myCharacterFilterBtn = document.getElementById("myCharacterFilterBtn");
+      const dashboardConnectBtn = document.getElementById("dashboardConnectBtn");
+      const nicknamePlayerTR = document.getElementById("nicknamePlayerTR");
+      const nicknamePlayerCOM = document.getElementById("nicknamePlayerCOM");
+      const nicknamePlayerNL = document.getElementById("nicknamePlayerNL");
+      const nicknamePlayerPT = document.getElementById("nicknamePlayerPT");
       const obayMeta = document.getElementById("obayMeta");
       const obayPanelBody = document.getElementById("obayPanelBody");
       const obayTableBody = document.getElementById("obayTableBody");
@@ -836,8 +1661,10 @@ function renderDashboardHtml() {
       const chatForm = document.getElementById("chatForm");
       const messageInput = document.getElementById("messageInput");
       const chatFeedback = document.getElementById("chatFeedback");
+      const chatPanelTitle = document.getElementById("chatPanelTitle");
+      const dashboardNicknames = { tr: "-", com: "-", nl: "-", pt: "-" };
 
-      const FIXED_ROOM = "TestRoom";
+      const FIXED_ROOM = "General";
       const cooldownColumns = [
         [["crime"], "Crims", "Crims"],
         [["car"], "Car", "Car"],
@@ -853,6 +1680,51 @@ function renderDashboardHtml() {
         [["blood"], "Blood", "Blood"],
         [["flight"], "Fly", "Flight"]
       ];
+      const cooldownUnlockRanks = {
+        heist: "Shoplifter",
+        organizedcrime: "Thief",
+        megaorganizedcrime: "Assassin",
+        spot: "Soldier"
+      };
+      const rankOrder = {
+        "0": 0,
+        emptysuit: 0,
+        deliveryboy: 0,
+        picciotto: 1,
+        shoplifter: 2,
+        pickpocket: 3,
+        thief: 4,
+        associate: 5,
+        mobster: 6,
+        soldier: 7,
+        swindler: 8,
+        assassin: 9,
+        localchief: 10,
+        chief: 11,
+        bruglione: 12,
+        godfather: 13,
+        firstlady: 13,
+        capodecina: 13
+      };
+      const rankFilterOptions = [
+        ["emptysuit", "Empty-suit"],
+        ["deliveryboy", "Delivery Boy"],
+        ["picciotto", "Picciotto"],
+        ["shoplifter", "Shoplifter"],
+        ["pickpocket", "Pickpocket"],
+        ["thief", "Thief"],
+        ["associate", "Associate"],
+        ["mobster", "Mobster"],
+        ["soldier", "Soldier"],
+        ["swindler", "Swindler"],
+        ["assassin", "Assassin"],
+        ["localchief", "Local Chief"],
+        ["chief", "Chief"],
+        ["bruglione", "Bruglione"],
+        ["godfather", "Godfather"],
+        ["firstlady", "First Lady"],
+        ["capodecina", "Capodecina"]
+      ];
 
       let currentRoom = "";
       let pollTimer = null;
@@ -862,30 +1734,60 @@ function renderDashboardHtml() {
       let myPlayerName = "";
       let myClientId = "";
       let userRoomStatus = "none";
-      let joinedRooms = ["TestRoom"];
-      let activeRoom = "TestRoom";
+      let isChatAdminOpen = false;
+      let lastChatMsgTime = 0;
+      let isChatSoundEnabled = true;
+      try {
+        const stored = localStorage.getItem("omerta_chat_sound_enabled");
+        if (stored !== null) {
+          isChatSoundEnabled = stored === "true";
+        }
+      } catch(e){}
+      let joinedRooms = ["General"];
+      let activeRoom = "General";
       let playerSearchTerm = "";
       let rankSortDirection = 0;
+      let selectedRankFilter = "";
+      let isMyCharacterFilterActive = false;
       let isObayExpanded = false;
+      let activeServerFilter = "";
+      let shouldAutoSelectServer = true;
+      let activeTemplateState = null;
 
       // Load initial rooms state from localStorage
       try {
         const storedJoined = localStorage.getItem("omerta_joined_rooms");
         if (storedJoined) {
-          joinedRooms = JSON.parse(storedJoined);
+          const parsedJoined = JSON.parse(storedJoined);
+          if (Array.isArray(parsedJoined)) {
+            joinedRooms = parsedJoined.filter((room) => typeof room === "string" && room.trim());
+          }
         }
         const storedActive = localStorage.getItem("omerta_active_room");
-        if (storedActive) {
-          activeRoom = storedActive;
+        if (storedActive && typeof storedActive === "string") {
+          activeRoom = storedActive.trim() || "General";
+        }
+        const storedServerFilter = localStorage.getItem("omerta_active_server_filter");
+        if (storedServerFilter && storedServerFilter !== "ALL") {
+          activeServerFilter = String(storedServerFilter).trim().toLowerCase();
         }
       } catch (err) {
         console.error("Failed to load room settings from localStorage", err);
       }
-      if (!Array.isArray(joinedRooms) || joinedRooms.length === 0) {
-        joinedRooms = ["TestRoom"];
+      
+      // Migrate TestRoom to General in joinedRooms and activeRoom
+      if (Array.isArray(joinedRooms)) {
+        joinedRooms = joinedRooms.map(r => r === "TestRoom" ? "General" : r);
       }
-      if (!joinedRooms.includes("TestRoom")) {
-        joinedRooms.unshift("TestRoom");
+      if (activeRoom === "TestRoom") {
+        activeRoom = "General";
+      }
+
+      if (!Array.isArray(joinedRooms) || joinedRooms.length === 0) {
+        joinedRooms = ["General"];
+      }
+      if (!joinedRooms.includes("General")) {
+        joinedRooms.unshift("General");
       }
       if (!activeRoom || !joinedRooms.includes(activeRoom)) {
         activeRoom = joinedRooms[0];
@@ -905,10 +1807,69 @@ function renderDashboardHtml() {
         return /^[A-Za-z0-9_-]{1,32}$/.test(room);
       }
 
+      function getActiveChatServerId() {
+        const normalized = String(activeServerFilter || "").trim().toLowerCase();
+        if (["tr", "com", "nl", "pt"].includes(normalized)) {
+          return normalized;
+        }
+        return "tr";
+      }
+
+      function isGeneralRoom(room) {
+        return String(room || "").trim() === FIXED_ROOM;
+      }
+
+      function getChatRoomKey(room) {
+        if (!isGeneralRoom(room)) {
+          return room;
+        }
+        return "General_" + getActiveChatServerId().toUpperCase();
+      }
+
+      function getChatRoomLabel(room) {
+        if (!isGeneralRoom(room)) {
+          return room;
+        }
+        return "General (" + getActiveChatServerId().toUpperCase() + ")";
+      }
+
       function escapeHtml(value) {
         const div = document.createElement("div");
         div.textContent = String(value);
         return div.innerHTML;
+      }
+
+      function parseTemplateChatMessage(value) {
+        const normalized = String(value || "").trim();
+        const messageWithoutIcon = normalized.startsWith("🔎") ? normalized.slice(2).trim() : normalized;
+        const match = messageWithoutIcon.match(/^(heist|race|oc|moc)\\s+(ariyor|looking for|procura|zoekt)\\s*\\(([^()]*)\\)\\s*$/i);
+        if (!match) {
+          return null;
+        }
+        return {
+          keyword: match[1],
+          verb: match[2],
+          location: match[3],
+        };
+      }
+
+      function isTemplateChatMessage(value) {
+        return !!parseTemplateChatMessage(value);
+      }
+
+      function renderTemplateChatMessage(templateData) {
+        return '<span class="chat-template-icon">🔎</span>' +
+          '<span class="chat-keyword">' + escapeHtml(templateData.keyword) + '</span> ' +
+          escapeHtml(templateData.verb) + ' ' +
+          '(<span class="chat-location">' + escapeHtml(String(templateData.location || "").toUpperCase()) + "</span>)";
+      }
+
+      function renderChatMessageText(value) {
+        const templateData = parseTemplateChatMessage(value);
+        if (templateData) {
+          return renderTemplateChatMessage(templateData);
+        }
+        return escapeHtml(value);
       }
 
       function formatDuration(totalSeconds) {
@@ -942,6 +1903,15 @@ function renderDashboardHtml() {
           return '<span class="muted">-</span>';
         }
 
+        if (value.locked === true) {
+          const unlockTitle = "Unlocks at " + (value.unlockRank || "required rank");
+          return '<span class="muted" title="' + escapeHtml(unlockTitle) + '">&#128274;</span>';
+        }
+
+        if (value.censored === true) {
+          return '<span class="muted">***</span>';
+        }
+
         if (value.ready === true || Number(value.timeEnd) === 0) {
           return '<span class="ready" title="READY">✅</span>';
         }
@@ -957,6 +1927,92 @@ function renderDashboardHtml() {
 
         const remaining = formatDuration(timeEnd - serverTime);
         return '<span class="waiting" title="' + remaining + '">' + remaining + "</span>";
+      }
+
+      function normalizeRankKey(value) {
+        if (!value) return "";
+        const raw = String(value).toLowerCase().trim();
+        const translationMap = {
+          "dazlak": "emptysuit",
+          "boş takım elbise": "emptysuit",
+          "bos takim elbise": "emptysuit",
+          "kurye": "deliveryboy",
+          "tetikçi": "picciotto",
+          "tetikci": "picciotto",
+          "hırsız": "shoplifter",
+          "hirsiz": "shoplifter",
+          "dükkan hırsızı": "shoplifter",
+          "dukkan hirsizi": "shoplifter",
+          "yankesici": "pickpocket",
+          "uzman hırsız": "thief",
+          "uzman hirsiz": "thief",
+          "ortak": "associate",
+          "haydut": "mobster",
+          "asker": "soldier",
+          "dolandırıcı": "swindler",
+          "dolandirici": "swindler",
+          "suikastçi": "assassin",
+          "suikastçı": "assassin",
+          "suikastci": "assassin",
+          "yerel şef": "localchief",
+          "yerel sef": "localchief",
+          "şef": "chief",
+          "sef": "chief",
+          "baba": "godfather",
+          "first lady": "firstlady",
+          "capodecina": "capodecina",
+          "winkeldief": "shoplifter",
+          "zakkenroller": "pickpocket",
+          "inbreker": "thief",
+          "oplichter": "swindler",
+          "mão-de-ferro": "emptysuit",
+          "sem terno": "emptysuit",
+          "estafeta": "deliveryboy",
+          "ladrão de lojas": "shoplifter",
+          "carteirista": "pickpocket",
+          "batedor de carteiras": "pickpocket",
+          "ladrão": "thief",
+          "associado": "associate",
+          "ganster": "mobster",
+          "gangster": "mobster",
+          "soldado": "soldier",
+          "vigarista": "swindler",
+          "assassino": "assassin",
+          "chefe local": "localchief",
+          "chefe": "chief",
+          "padrinho": "godfather"
+        };
+        if (Object.prototype.hasOwnProperty.call(translationMap, raw)) {
+          return translationMap[raw];
+        }
+        return raw.replace(/[\\s_-]+/g, "").replace(/[^a-z0-9]/g, "");
+      }
+
+      function getRankOrderValue(rank) {
+        const normalized = normalizeRankKey(rank);
+        if (!normalized || !Object.prototype.hasOwnProperty.call(rankOrder, normalized)) {
+          return null;
+        }
+        return rankOrder[normalized];
+      }
+
+      function getCooldownUnlockRank(keys) {
+        const primaryKey = normalizeRankKey(Array.isArray(keys) && keys.length > 0 ? keys[0] : "");
+        return cooldownUnlockRanks[primaryKey] || "";
+      }
+
+      function renderCooldownCell(entry, keys, fullLabel, serverTime) {
+        const unlockRank = getCooldownUnlockRank(keys);
+        if (unlockRank) {
+          const playerRankValue = getRankOrderValue(entry && entry.progression ? entry.progression.rank : "");
+          const unlockRankValue = getRankOrderValue(unlockRank);
+          if (playerRankValue !== null && unlockRankValue !== null && playerRankValue < unlockRankValue) {
+            const unlockTitle = "Unlocks at " + unlockRank;
+            return '<td title="' + escapeHtml(unlockTitle) + '"><span class="muted" title="' + escapeHtml(unlockTitle) + '">&#128274;</span></td>';
+          }
+        }
+
+        return '<td title="' + escapeHtml(fullLabel) + '">' + resolveCooldownValue(getCooldownRawValue(entry.cooldowns, keys), serverTime) + "</td>";
       }
 
       function getCooldownRawValue(cooldowns, keys) {
@@ -980,6 +2036,29 @@ function renderDashboardHtml() {
         if (searchValue) {
           result = result.filter((entry) => {
             return String(entry.player || "").toLowerCase().includes(searchValue);
+          });
+        }
+
+        if (activeServerFilter && activeServerFilter !== "ALL") {
+          result = result.filter((entry) => {
+            return (entry.serverId || "").toLowerCase() === activeServerFilter.toLowerCase();
+          });
+        }
+
+        if (isMyCharacterFilterActive) {
+          if (myPlayerName) {
+            result = result.filter((entry) => {
+              return String(entry.player || "").toLowerCase().trim() === myPlayerName.toLowerCase().trim();
+            });
+          } else {
+            return [];
+          }
+        } else if (selectedRankFilter) {
+          result = result.filter((entry) => {
+            const progression = entry && entry.progression && typeof entry.progression === "object" ? entry.progression : {};
+            const norm = normalizeRankKey(progression.rank || "");
+            console.log("[Rank Filter Debug] Player:", entry.player, "Raw Rank:", progression.rank, "Normalized:", norm, "Selected Filter:", selectedRankFilter, "Match:", norm === selectedRankFilter);
+            return norm === selectedRankFilter;
           });
         }
 
@@ -1009,7 +2088,14 @@ function renderDashboardHtml() {
         }
 
         rankSortButton.classList.add("active");
-        rankSortButton.textContent = rankSortDirection > 0 ? "Rank ↑" : "Rank ↓";
+        rankSortButton.textContent = rankSortDirection > 0 ? "Rank â†‘" : "Rank â†“";
+      }
+
+      function populateRankFilterOptions() {
+        if (!rankFilterSelect) return;
+        rankFilterSelect.innerHTML = ['<option value="">All ranks</option>'].concat(
+          rankFilterOptions.map(([value, label]) => '<option value="' + escapeHtml(value) + '">' + escapeHtml(label) + "</option>")
+        ).join("");
       }
 
       function updateObayToggleButton() {
@@ -1017,15 +2103,272 @@ function renderDashboardHtml() {
         obayPanelBody.className = isObayExpanded ? "obay-panel-body" : "obay-panel-body collapsed";
       }
 
+      updateObayToggleButton = ((original) => function() {
+        original();
+        obayToggleButton.textContent = isObayExpanded ? "Obay Auctions \u25BC" : "Obay Auctions \u25B6";
+      })(updateObayToggleButton);
+
+      function updateServerCards(stateData) {
+        const serverCounts = { tr: 0, com: 0, nl: 0, pt: 0 };
+        if (stateData && Array.isArray(stateData.players)) {
+          stateData.players.forEach(player => {
+            const srv = (player.serverId || "").toLowerCase();
+            if (serverCounts[srv] !== undefined && !player.offline) {
+              serverCounts[srv]++;
+            }
+          });
+        }
+
+        updateNicknameCardsFromState(stateData);
+
+        const servers = ["tr", "com", "nl", "pt"];
+        servers.forEach(srv => {
+          const count = serverCounts[srv];
+          const cardEl = document.getElementById("card-" + srv);
+          const nameEl = document.getElementById("name-" + srv);
+          if (cardEl && nameEl) {
+            nameEl.textContent = srv.toUpperCase() + " (" + count + ")";
+            if (count > 0) {
+              cardEl.classList.remove("no-players");
+              cardEl.classList.add("has-players");
+            } else {
+              cardEl.classList.remove("has-players");
+              cardEl.classList.add("no-players");
+            }
+          }
+        });
+      }
+
+      const SERVER_QUICK_LINKS = {
+        pt: {
+          crims: "https://omerta.pt/index.php#/?module=Crimes",
+          car: "https://omerta.pt/index.php#/?module=Cars",
+          smuggling: "https://omerta.pt/index.php#/smuggling.php",
+          groupCrimes: "https://omerta.pt/index.php#/?module=GroupCrimes",
+          races: "https://omerta.pt/index.php#/races.php",
+          bullet: "https://omerta.pt/index.php#/bullets2.php",
+          kill: "https://omerta.pt/index.php#/?module=Detectives",
+          hospital: "https://omerta.pt/index.php#/?module=Bloodbank",
+          fly: "https://omerta.pt/index.php#/?module=Travel",
+          market: "https://omerta.pt/index.php#/?module=Shop&action=display_section&id=0",
+          garage: "https://omerta.pt/index.php#/garage.php"
+        },
+        com: {
+          crims: "https://barafranca.com/#/?module=Crimes",
+          car: "https://barafranca.com/#/?module=Cars",
+          smuggling: "https://barafranca.com/#/smuggling.php",
+          groupCrimes: "https://barafranca.com/#/?module=GroupCrimes",
+          races: "https://barafranca.com/#/races.php",
+          bullet: "https://barafranca.com/#/bullets2.php",
+          kill: "https://barafranca.com/#/?module=Detectives",
+          hospital: "https://barafranca.com/#/?module=Bloodbank",
+          fly: "https://barafranca.com/#/?module=Travel",
+          market: "https://barafranca.com/#/?module=Shop&action=display_section&id=0",
+          garage: "https://barafranca.com/#/garage.php"
+        },
+        tr: {
+          crims: "https://omerta.com.tr/index.php#/?module=Crimes",
+          car: "https://omerta.com.tr/index.php#/?module=Cars",
+          smuggling: "https://omerta.com.tr/index.php#/smuggling.php",
+          groupCrimes: "https://omerta.com.tr/index.php#/?module=GroupCrimes",
+          races: "https://omerta.com.tr/index.php#/races.php",
+          bullet: "https://omerta.com.tr/index.php#/bullets2.php",
+          kill: "https://omerta.com.tr/index.php#/?module=Detectives",
+          hospital: "https://omerta.com.tr/index.php#/?module=Bloodbank",
+          fly: "https://omerta.com.tr/index.php#/?module=Travel",
+          market: "https://omerta.com.tr/index.php#/?module=Shop&action=display_section&id=0",
+          garage: "https://omerta.com.tr/index.php#/garage.php"
+        },
+        nl: {
+          crims: "https://barafranca.nl/#/?module=Crimes",
+          car: "https://barafranca.nl/#/?module=Cars",
+          smuggling: "https://barafranca.nl/#/smuggling.php",
+          groupCrimes: "https://barafranca.nl/#/?module=GroupCrimes",
+          races: "https://barafranca.nl/#/races.php",
+          bullet: "https://barafranca.nl/#/bullets2.php",
+          kill: "https://barafranca.nl/#/?module=Detectives",
+          hospital: "https://barafranca.nl/?module=Bloodbank",
+          fly: "https://barafranca.nl/#/?module=Travel",
+          market: "https://barafranca.nl/#/?module=Shop&action=display_section&id=0",
+          garage: "https://barafranca.nl/#/garage.php"
+        }
+      };
+
+      function updateQuickLinks() {
+        const srv = (activeServerFilter || "pt").toLowerCase();
+        const links = SERVER_QUICK_LINKS[srv] || SERVER_QUICK_LINKS["pt"];
+        const keys = [
+          "crims", "car", "smuggling", "groupCrimes", "races",
+          "bullet", "kill", "hospital", "fly", "market", "garage"
+        ];
+        keys.forEach(key => {
+          const el = document.getElementById("link-" + key);
+          if (el) {
+            el.href = links[key] || "#";
+          }
+        });
+      }
+
+      function updateActiveCardHighlight() {
+        updateQuickLinks();
+        const servers = ["tr", "com", "nl", "pt"];
+        servers.forEach(srv => {
+          const cardEl = document.getElementById("card-" + srv);
+          if (cardEl) {
+            if (srv === activeServerFilter) {
+              cardEl.classList.add("active");
+            } else {
+              cardEl.classList.remove("active");
+            }
+          }
+        });
+      }
+
+      function getPlayerProfileBaseUrl(serverId) {
+        const srv = (serverId || activeServerFilter || "tr").toLowerCase();
+
+        if (srv === "tr") {
+          return "https://omerta.com.tr/index.php#./user.php?page=user&nick=";
+        }
+        if (srv === "com") {
+          return "https://barafranca.com/#./user.php?page=user&nick=";
+        }
+        if (srv === "nl") {
+          return "https://barafranca.nl/index.php#./user.php?page=user&nick=";
+        }
+        if (srv === "pt") {
+          return "https://omerta.pt/index.php#./user.php?page=user&nick=";
+        }
+
+        return "https://omerta.com.tr/index.php#./user.php?page=user&nick=";
+      }
+
+      function getInformationPageUrl(serverId) {
+        const srv = String(serverId || "").trim().toLowerCase();
+        if (srv === "tr") return "https://omerta.com.tr/index.php#/information.php";
+        if (srv === "com") return "https://barafranca.com/index.php#/information.php";
+        if (srv === "nl") return "https://barafranca.nl/index.php#/information.php";
+        if (srv === "pt") return "https://omerta.pt/index.php#/information.php";
+        return "#";
+      }
+
+      function updateNicknameCards() {
+        if (nicknamePlayerTR) nicknamePlayerTR.textContent = dashboardNicknames.tr || "-";
+        if (nicknamePlayerCOM) nicknamePlayerCOM.textContent = dashboardNicknames.com || "-";
+        if (nicknamePlayerNL) nicknamePlayerNL.textContent = dashboardNicknames.nl || "-";
+        if (nicknamePlayerPT) nicknamePlayerPT.textContent = dashboardNicknames.pt || "-";
+      }
+
+      function updateNicknameCardsFromState(stateData) {
+        if (!stateData || !Array.isArray(stateData.players)) {
+          updateNicknameCards();
+          return;
+        }
+
+        ["tr", "com", "nl", "pt"].forEach((srv) => {
+          if (dashboardNicknames[srv] && dashboardNicknames[srv] !== "-") {
+            return;
+          }
+          const match = stateData.players.find((player) => String(player.serverId || "").toLowerCase() === srv && player.player);
+          if (match) {
+            dashboardNicknames[srv] = match.player;
+          }
+        });
+
+        updateNicknameCards();
+      }
+
+      function selectServer(srv) {
+        activeServerFilter = srv;
+        try {
+          localStorage.setItem("omerta_active_server_filter", activeServerFilter);
+        } catch(e){}
+        updateActiveCardHighlight();
+        if (isGeneralRoom(currentRoom)) {
+          lastChatMsgTime = 0;
+        }
+        if (latestState) {
+          renderPlayers(latestState);
+        }
+        loadStateAndChat();
+        loadObay();
+      }
+
+      function renderNotesAndTargets(state) {
+        if (!state) return;
+        const targets = state.targets || [];
+        const notes = state.notes || [];
+
+        // Update header button counters
+        const targetsCountEl = document.getElementById('targetsCount');
+        if (targetsCountEl) targetsCountEl.textContent = targets.length;
+        const notesCountEl = document.getElementById('notesCount');
+        if (notesCountEl) notesCountEl.textContent = notes.length;
+
+        // Render Targets
+        const targetsListContainer = document.getElementById('targetsListContainer');
+        if (targetsListContainer) {
+          targetsListContainer.style.display = 'flex';
+          targetsListContainer.style.flexDirection = 'column';
+          targetsListContainer.style.gap = '5px';
+          if (targets.length === 0) {
+            targetsListContainer.innerHTML = '<span class="muted" style="font-size: 11px; padding: 4px 0;">No targets added yet.</span>';
+          } else {
+            targetsListContainer.innerHTML = targets.map((t) => {
+              const targetProfileUrl = getPlayerProfileBaseUrl(activeServerFilter) + encodeURIComponent(t.name);
+              const isDead = !!t.dead;
+              const deadClass = isDead ? ' is-dead' : '';
+              const skullClass = isDead ? ' is-dead' : '';
+              const skullTitle = isDead ? 'Canl\u0131 olarak i\u015faretle' : '\u00d6ld\u00fc olarak i\u015faretle';
+              return '<div class="target-item' + deadClass + '">' +
+                '<div class="target-info">' +
+                '<a class="target-name" href="' + escapeHtml(targetProfileUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(t.name) + '</a>' +
+                '<span class="added-by-badge">\ud83d\udc64 ' + escapeHtml(t.addedBy) + '</span>' +
+                '</div>' +
+                '<div class="target-actions">' +
+                '<button type="button" class="skull-btn' + skullClass + '" data-target-id="' + escapeHtml(t.id) + '" onclick="toggleTargetDead(this.dataset.targetId)" title="' + skullTitle + '">💀</button>' +
+'<button type="button" class="delete-btn" data-target-id="' + escapeHtml(t.id) + '" onclick="deleteTarget(this.dataset.targetId)" title="Sil">✕</button>' +
+                '</div>' +
+                '</div>';
+            }).join('');
+          }
+        }
+
+        // Render Notes
+        const notesListContainer = document.getElementById('notesListContainer');
+        if (notesListContainer) {
+          if (notes.length === 0) {
+            notesListContainer.innerHTML = '<span class="muted" style="font-size: 11px; padding: 4px 0;">No notes added yet.</span>';
+          } else {
+            notesListContainer.innerHTML = notes.map((n) => {
+              return '<div class="note-item">' +
+                '<div class="note-info">' +
+                '<span class="note-text">' + escapeHtml(n.text) + '</span>' +
+                '<span class="added-by-badge">\ud83d\udc64 ' + escapeHtml(n.addedBy) + '</span>' +
+                '</div>' +
+                '<button type="button" class="delete-btn" data-note-id="' + escapeHtml(n.id) + '" onclick="deleteNote(this.dataset.noteId)" title="Sil">✕</button>' +
+                '</div>';
+            }).join('');
+          }
+        }
+      }
+
       function renderPlayers(state) {
+        updateServerCards(state);
+        updateActiveCardHighlight();
+
+        if (myCharacterFilterBtn) {
+          myCharacterFilterBtn.textContent = myPlayerName ? "Character: " + myPlayerName : "Character: -";
+        }
+
         if (!state || !Array.isArray(state.players) || state.players.length === 0) {
-          cooldownTableBody.innerHTML = '<tr><td colspan="19" class="muted">No player data for this room yet.</td></tr>';
+          cooldownTableBody.innerHTML = '<tr><td colspan="20" class="muted">No player data for this room yet.</td></tr>';
           return;
         }
 
         const filteredPlayers = applyPlayerFilters(state.players);
         if (filteredPlayers.length === 0) {
-          cooldownTableBody.innerHTML = '<tr><td colspan="19" class="muted">No players match this search.</td></tr>';
+          cooldownTableBody.innerHTML = '<tr><td colspan="20" class="muted">No players match this search.</td></tr>';
           return;
         }
 
@@ -1035,26 +2378,60 @@ function renderDashboardHtml() {
             const status = entry.offline
               ? '<span class="status-dot offline" aria-label="Offline"></span>'
               : '<span class="status-dot online" aria-label="Online"></span>';
-            const cells = cooldownColumns.map(([keys, shortLabel, fullLabel]) => {
-              return '<td title="' + escapeHtml(fullLabel) + '">' + resolveCooldownValue(getCooldownRawValue(entry.cooldowns, keys), state.serverTime) + "</td>";
-            }).join("");
             const progression = entry.progression && typeof entry.progression === "object" ? entry.progression : {};
+            const cells = cooldownColumns.map(([keys, shortLabel, fullLabel]) => {
+              return renderCooldownCell(entry, keys, fullLabel, state.serverTime);
+            }).join("");
             const rank = progression.rank || "-";
-            const progressionPercent = progression.progressionPercent || "-";
-            const activityPercent = progression.activityPercent || "-";
+            let progressionPercent = progression.progressionPercent || "-";
+            let activityPercent = progression.activityPercent || "-";
+            const platingLabel = progression.platingLabel || "";
+            const platingPercent = progression.platingPercent || "";
+
+            if (currentRoom.toLowerCase() === "general") {
+              progressionPercent = "***";
+              activityPercent = "***";
+            }
+
+            let platingHtml = '<span class="muted">-</span>';
+            if (platingLabel) {
+              const labelLower = platingLabel.toLowerCase();
+              let tierClass = "plating-none";
+              if (labelLower.includes("very high")) {
+                tierClass = "plating-very-high";
+              } else if (labelLower.includes("very low")) {
+                tierClass = "plating-very-low";
+              } else if (labelLower.includes("high")) {
+                tierClass = "plating-high";
+              } else if (labelLower.includes("medium")) {
+                tierClass = "plating-medium";
+              } else if (labelLower.includes("low")) {
+                tierClass = "plating-low";
+              } else if (labelLower.includes("none")) {
+                tierClass = "plating-none";
+              }
+              const tooltip = (platingPercent && currentRoom.toLowerCase() !== "general") ? 'title="' + escapeHtml(platingPercent) + '"' : '';
+              platingHtml = '<span class="' + tierClass + '" ' + tooltip + '>' + escapeHtml(platingLabel) + '</span>';
+            }
+
+            const profileTooltip = "Rank: " + rank;
+            const playerProfileUrl = getPlayerProfileBaseUrl(entry.serverId) + encodeURIComponent(entry.player || "");
+            const playerNameHtml = '<a class="text-cell player-name" href="' + escapeHtml(playerProfileUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(entry.player || "-") + "</a>";
 
             return '<tr class="' + rowClass + '">' +
               '<td title="' + (entry.offline ? "Offline" : "Online") + '">' + status + "</td>" +
-              '<td title="' + escapeHtml(entry.player || "-") + '"><span class="text-cell player-name">' + escapeHtml(entry.player || "-") + "</span></td>" +
-              '<td title="' + escapeHtml(rank) + '"><span class="text-cell rank-name">' + escapeHtml(rank) + "</span></td>" +
+              '<td title="' + escapeHtml(entry.player || "-") + '">' + playerNameHtml + "</td>" +
+              '<td title="' + escapeHtml(profileTooltip) + '"><span class="text-cell rank-name">' + escapeHtml(rank) + "</span></td>" +
               '<td title="' + escapeHtml(progressionPercent) + '">' + escapeHtml(progressionPercent) + "</td>" +
               '<td title="' + escapeHtml(activityPercent) + '">' + escapeHtml(activityPercent) + "</td>" +
+              '<td>' + platingHtml + '</td>' +
               cells +
               '<td title="' + formatUpdated(Number(entry.updatedAt), state.serverTime) + '">' + formatUpdated(Number(entry.updatedAt), state.serverTime) + "</td>" +
               "</tr>";
           });
 
         cooldownTableBody.innerHTML = rows.join("");
+        renderNotesAndTargets(state);
       }
 
       function renderObay(data) {
@@ -1109,24 +2486,115 @@ function renderDashboardHtml() {
       function renderChat(room, messages) {
         const currentSender = getChatSender();
 
+        let hasNewMessage = false;
+        if (messages && messages.length > 0) {
+          const lastMsg = messages[messages.length - 1];
+          const lastTime = Number(lastMsg.createdAt) || 0;
+          if (lastChatMsgTime > 0 && lastTime > lastChatMsgTime) {
+            if (lastMsg.player !== currentSender) {
+              hasNewMessage = true;
+            }
+          }
+          lastChatMsgTime = lastTime;
+        }
+
+        // Pinned Messages List Update
+        const pinnedMessages = messages.filter(m => m.pinned);
+        const pinnedContainer = document.getElementById("chatPinnedContainer");
+
+        if (pinnedContainer) {
+          if (pinnedMessages.length > 0) {
+            pinnedContainer.style.display = "block";
+            pinnedContainer.innerHTML = pinnedMessages.map((msg) => {
+              const cleanText = String(msg.message || "").replace(/<\\/?[^>]+(>|$)/g, "");
+              return '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 8px; border-bottom:1px solid rgba(255,255,255,.05); font-size:11px;">' +
+                '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);">📌 <b style="color:var(--yellow);">' + escapeHtml(msg.player || "-") + ':</b> ' + escapeHtml(cleanText) + '</span>' +
+                '<button type="button" class="delete-btn" data-msg-id="' + escapeHtml(msg.id || "") + '" onclick="togglePinMessage(this.dataset.msgId)" title="Unpin">✕</button>' +
+                '</div>';
+            }).join("");
+          } else {
+            pinnedContainer.style.display = "none";
+            pinnedContainer.innerHTML = "";
+          }
+        }
+
         chatMessages.innerHTML = messages.map((message) => {
-          const isOwn = message.player === currentSender;
-          const bubbleClass = isOwn ? "own" : "other";
-          const playerName = escapeHtml(message.player || "-");
-          const msgText = String(message.message || "");
           const timeStr = formatClock(Number(message.createdAt));
+
+          // System notification messages (target dead/alive events)
+          if (message.system) {
+            const isDead = String(message.message || '').includes('DEAD');
+            const sysBg = isDead
+              ? 'rgba(255,107,107,0.10)'
+              : 'rgba(51,209,122,0.10)';
+            const sysBorder = isDead
+              ? 'rgba(255,107,107,0.35)'
+              : 'rgba(51,209,122,0.35)';
+            const sysColor = isDead ? 'var(--red)' : 'var(--green)';
+            return '<div class="chat-item system-event" data-msg-id="' + (message.id || '') + '" style="' +
+              'display: flex; align-items: center; justify-content: center; gap: 6px;' +
+              'margin: 4px 0; padding: 5px 10px; border-radius: 8px;' +
+              'background: ' + sysBg + '; border: 1px solid ' + sysBorder + ';' +
+              'text-align: center;">' +
+              '<span style="font-size: 11px; font-weight: 700; color: ' + sysColor + ';">' + escapeHtml(message.message || '') + '</span>' +
+              '<span style="font-size: 9px; color: var(--muted); flex-shrink: 0;">' + escapeHtml(timeStr) + '</span>' +
+              '</div>';
+          }
+
+          // Resolve per-player serverId from live state for accurate profile URL
+          let playerServerId = activeServerFilter;
+          if (latestState && Array.isArray(latestState.players)) {
+            const stateEntry = latestState.players.find(function(p) {
+              return p.player === message.player;
+            });
+            if (stateEntry && stateEntry.serverId) {
+              playerServerId = stateEntry.serverId;
+            }
+          }
+
+          const isOwn = message.player === currentSender;
+          const rawMessageText = String(message.message || "");
+          const isTemplateMessage = isTemplateChatMessage(rawMessageText);
+          const bubbleClass = (isOwn ? "own" : "other") + (isTemplateMessage ? " template-message" : "");
+          const playerName = escapeHtml(message.player || "-");
+          const playerProfileUrl = getPlayerProfileBaseUrl(playerServerId) + encodeURIComponent(message.player || "");
+          const msgText = renderChatMessageText(rawMessageText);
+
+          // Server badge next to player name
+          const srvBadgeColor = { tr: '#e06c75', com: '#61afef', nl: '#e5c07b', pt: '#98c379' };
+          const srvColor = srvBadgeColor[playerServerId] || 'var(--muted)';
+          const serverBadge = '<span style="font-size: 8px; font-weight: 800; color: ' + srvColor + '; opacity: 0.85; margin-right: 3px; vertical-align: middle; letter-spacing: 0.3px;">' + escapeHtml(playerServerId.toUpperCase()) + '</span>';
           
-          return '<div class="chat-item ' + bubbleClass + '">' +
+          const replyBtn = isOwn ? "" : '<button type="button" class="chat-reply-button" data-player="' + playerName + '">Yanitla</button>';
+          const pinText = message.pinned ? "📍 Unpin" : "📌 Pin";
+          const pinBtn = '<button type="button" class="chat-pin-button" data-msg-id="' + (message.id || "") + '">' + pinText + '</button>';
+          const chatActions = '<div class="chat-actions">' + replyBtn + (replyBtn ? " | " : "") + pinBtn + '</div>';
+
+          const pinIndicator = message.pinned ? ' <span style="color: var(--yellow); font-size: 9px;" title="Pinned Message">📌</span>' : '';
+          
+          return '<div class="chat-item ' + bubbleClass + '" data-msg-id="' + (message.id || "") + '">' +
             '<div class="chat-content">' +
-            '<span class="chat-player">' + playerName + ':</span>' +
+            serverBadge +
+            '<a class="chat-player" href="' + escapeHtml(playerProfileUrl) + '" target="_blank" rel="noopener noreferrer" title="Open profile">' + escapeHtml(playerName) + ':</a>' +
             '<span class="chat-text">' + msgText + '</span>' +
+            pinIndicator +
             '</div>' +
+            '<div class="chat-meta-row">' +
+            chatActions +
             '<span class="chat-time">' + escapeHtml(timeStr) + '</span>' +
+            '</div>' +
             '</div>';
         }).join("");
 
         chatMessages.scrollTop = chatMessages.scrollHeight;
         chatMeta.textContent = room + " room chat, " + messages.length + " message(s).";
+
+        if (hasNewMessage && isChatSoundEnabled) {
+          const isTabHidden = document.hidden || !document.hasFocus();
+          if (isTabHidden) {
+            playNotificationSound();
+          }
+        }
       }
 
       async function loadObay() {
@@ -1141,7 +2609,8 @@ function renderDashboardHtml() {
         }
 
         try {
-          const response = await fetch("/api/obay?room=" + encodeURIComponent(currentRoom) + "&clientId=" + encodeURIComponent(myClientId));
+          const targetSrv = activeServerFilter === "ALL" ? "nl" : activeServerFilter;
+          const response = await fetch("/api/obay?room=" + encodeURIComponent(currentRoom) + "&clientId=" + encodeURIComponent(myClientId) + "&serverId=" + encodeURIComponent(targetSrv));
           const data = await response.json();
 
           if (!response.ok) {
@@ -1158,17 +2627,19 @@ function renderDashboardHtml() {
       async function loadStateAndChat() {
         if (!currentRoom) {
           roomTitle.textContent = FIXED_ROOM;
+          chatPanelTitle.textContent = getChatRoomLabel(FIXED_ROOM);
           stateMeta.textContent = "Online: 0";
           chatMeta.textContent = "No messages loaded.";
-          cooldownTableBody.innerHTML = '<tr><td colspan="19" class="muted">No room selected.</td></tr>';
+          cooldownTableBody.innerHTML = '<tr><td colspan="20" class="muted">No room selected.</td></tr>';
           chatMessages.innerHTML = '<div class="chat-empty">Select a room to load chat.</div>';
           return;
         }
 
         if (!isValidRoom(currentRoom)) {
           roomTitle.textContent = currentRoom;
+          chatPanelTitle.textContent = getChatRoomLabel(currentRoom);
           stateMeta.textContent = "Online: 0";
-          cooldownTableBody.innerHTML = '<tr><td colspan="19" class="muted">Invalid room name.</td></tr>';
+          cooldownTableBody.innerHTML = '<tr><td colspan="20" class="muted">Invalid room name.</td></tr>';
           chatMessages.innerHTML = '<div class="chat-empty">Invalid room name.</div>';
           return;
         }
@@ -1180,43 +2651,133 @@ function renderDashboardHtml() {
 
           const layoutEl = document.querySelector(".layout");
           const unauthorizedEl = document.getElementById("unauthorizedView");
+          const cooldownsPanel = document.getElementById("cooldownsPanel");
+          const obayPanel = document.getElementById("obayPanel");
+          const chatPanel = document.getElementById("chatPanel");
+          const chatAdminPanel = document.getElementById("chatAdminPanel");
 
           if (userRoomStatus === "owner" || userRoomStatus === "member") {
             layoutEl.style.display = "grid";
+            layoutEl.style.gridTemplateColumns = "minmax(0, 2.8fr) minmax(360px, 1.15fr)";
             unauthorizedEl.style.display = "none";
+            cooldownsPanel.style.display = "block";
+            obayPanel.style.display = "block";
+            chatPanel.style.display = "flex";
 
-            const adminPanel = document.getElementById("adminPanel");
-            if (userRoomStatus === "owner") {
-              adminPanel.style.display = "block";
-              loadAdminData();
-            } else {
-              adminPanel.style.display = "none";
+            const notesPanel = document.getElementById('notesPanel');
+            const notesPanelHeaderBtns = document.getElementById('notesPanelHeaderButtons');
+            if (notesPanel && notesPanelHeaderBtns) {
+              const roomLower = currentRoom.toLowerCase();
+              if (roomLower !== 'general' && roomLower !== 'testroom') {
+                notesPanelHeaderBtns.style.display = 'flex';
+              } else {
+                notesPanelHeaderBtns.style.display = 'none';
+                notesPanel.style.display = 'none';
+                // reset active tab state
+                activeNotesTab = null;
+                const hTBtn = document.getElementById('headerTargetsBtn');
+                const hNBtn = document.getElementById('headerNotesBtn');
+                if (hTBtn) { hTBtn.style.borderColor = 'var(--border)'; hTBtn.style.color = 'var(--muted)'; }
+                if (hNBtn) { hNBtn.style.borderColor = 'var(--border)'; hNBtn.style.color = 'var(--muted)'; }
+              }
             }
 
-            const [stateResponse, chatResponse] = await Promise.all([
-              fetch("/api/state?room=" + encodeURIComponent(currentRoom) + "&clientId=" + encodeURIComponent(myClientId)),
-              fetch("/api/chat?room=" + encodeURIComponent(currentRoom) + "&clientId=" + encodeURIComponent(myClientId))
-            ]);
+            const chatAdminToggleBtn = document.getElementById("chatAdminToggleBtn");
+            if (userRoomStatus === "owner") {
+              chatAdminToggleBtn.style.display = "inline-block";
+              if (isChatAdminOpen) {
+                chatAdminPanel.style.display = "block";
+                loadAdminData();
+              } else {
+                chatAdminPanel.style.display = "none";
+              }
+            } else {
+              chatAdminToggleBtn.style.display = "none";
+              chatAdminPanel.style.display = "none";
+            }
 
+            const stateResponse = await fetch("/api/state?room=" + encodeURIComponent(currentRoom) + "&clientId=" + encodeURIComponent(myClientId));
             const stateData = await stateResponse.json();
-            const chatData = await chatResponse.json();
 
             if (!stateResponse.ok) {
               throw new Error(stateData.error || "State request failed");
             }
 
+            latestState = stateData;
+
+            // Resolve and sync nickname for active server if found in state data matching our clientId
+            if (myClientId && activeServerFilter) {
+              const targetFilter = activeServerFilter.toLowerCase();
+              const matchedEntry = stateData.players.find(p => p.clientId === myClientId && (p.serverId || "").toLowerCase() === targetFilter);
+              if (matchedEntry && matchedEntry.player) {
+                const oldName = myPlayerName;
+                myPlayerName = matchedEntry.player;
+                if (myPlayerName !== oldName) {
+                  updateChatFormState();
+                }
+                window.postMessage({ type: "OMERTA_SET_PLAYER", player: myPlayerName, serverId: activeServerFilter }, "*");
+              }
+            }
+
+            roomTitle.textContent = currentRoom;
+            stateMeta.textContent = "Online: " + stateData.players.filter((player) => !player.offline).length;
+
+            const servers = ["tr", "com", "nl", "pt"];
+            if (shouldAutoSelectServer || !servers.includes(activeServerFilter)) {
+              const serverCounts = { tr: 0, com: 0, nl: 0, pt: 0 };
+              stateData.players.forEach(player => {
+                const srv = (player.serverId || "").toLowerCase();
+                if (serverCounts[srv] !== undefined && !player.offline) {
+                  serverCounts[srv]++;
+                }
+              });
+
+              if (servers.includes(activeServerFilter) && serverCounts[activeServerFilter] > 0) {
+                // Keep the current active filter
+              } else {
+                let targetSrv = servers.find(srv => serverCounts[srv] > 0);
+                if (!targetSrv) {
+                  const anyCounts = { tr: 0, com: 0, nl: 0, pt: 0 };
+                  stateData.players.forEach(player => {
+                    const srv = (player.serverId || "").toLowerCase();
+                    if (anyCounts[srv] !== undefined) {
+                      anyCounts[srv]++;
+                    }
+                  });
+                  targetSrv = servers.find(srv => anyCounts[srv] > 0);
+                }
+                if (!targetSrv) {
+                  targetSrv = "tr";
+                }
+                activeServerFilter = targetSrv;
+                try {
+                  localStorage.setItem("omerta_active_server_filter", activeServerFilter);
+                } catch(e){}
+              }
+              shouldAutoSelectServer = false;
+            }
+
+            const chatRoomKey = getChatRoomKey(currentRoom);
+            const chatRoomLabel = getChatRoomLabel(currentRoom);
+            const chatResponse = await fetch("/api/chat?room=" + encodeURIComponent(chatRoomKey) + "&clientId=" + encodeURIComponent(myClientId));
+            const chatData = await chatResponse.json();
+
             if (!chatResponse.ok) {
               throw new Error(chatData.error || "Chat request failed");
             }
 
-            latestState = stateData;
-            roomTitle.textContent = currentRoom;
-            stateMeta.textContent = "Online: " + stateData.players.filter((player) => !player.offline).length;
             renderPlayers(stateData);
-            renderChat(currentRoom, chatData.messages);
+            chatPanelTitle.textContent = chatRoomLabel;
+            renderChat(chatRoomLabel, chatData.messages);
           } else {
-            layoutEl.style.display = "none";
+            layoutEl.style.display = "grid";
+            layoutEl.style.gridTemplateColumns = "1fr";
             unauthorizedEl.style.display = "block";
+            cooldownsPanel.style.display = "none";
+            obayPanel.style.display = "none";
+            chatPanel.style.display = "none";
+            chatAdminPanel.style.display = "none";
+            document.getElementById("chatAdminToggleBtn").style.display = "none";
 
             const titleEl = document.getElementById("unauthorizedTitle");
             const msgEl = document.getElementById("unauthorizedMessage");
@@ -1224,7 +2785,7 @@ function renderDashboardHtml() {
             const iconEl = document.getElementById("unauthorizedIcon");
 
             if (userRoomStatus === "pending") {
-              iconEl.textContent = "⏳";
+              iconEl.textContent = "â³";
               titleEl.textContent = "Waiting for Approval";
               msgEl.textContent = "Waiting for owner approval to join " + currentRoom + ".";
               joinBtn.style.display = "none";
@@ -1252,12 +2813,14 @@ function renderDashboardHtml() {
                 }
               };
             }
+            iconEl.textContent = userRoomStatus === "pending" ? "\u23F3" : "\uD83D\uDD12";
           }
         } catch (error) {
           latestState = null;
           roomTitle.textContent = currentRoom || FIXED_ROOM;
+          chatPanelTitle.textContent = getChatRoomLabel(currentRoom || FIXED_ROOM);
           stateMeta.textContent = "Failed to load room data.";
-          cooldownTableBody.innerHTML = '<tr><td colspan="19" class="muted">Could not load state.</td></tr>';
+          cooldownTableBody.innerHTML = '<tr><td colspan="20" class="muted">Could not load state.</td></tr>';
           chatMessages.innerHTML = '<div class="chat-empty">Could not load chat.</div>';
           chatMeta.textContent = error.message;
         }
@@ -1272,34 +2835,33 @@ function renderDashboardHtml() {
           const pendingData = await pendingRes.json();
           const membersData = await membersRes.json();
           
-          const pendingTable = document.getElementById("pendingTableBody");
+          const compactPending = document.getElementById("compactPendingList");
           if (pendingData.pending && pendingData.pending.length > 0) {
-            pendingTable.innerHTML = pendingData.pending.map((p) => {
-              return \`<tr>
-                <td style="padding: 4px; font-size: 11px; text-align: left; padding-left: 8px;">\${escapeHtml(p.player)}</td>
-                <td style="padding: 4px;">
-                <button class="button" style="padding: 2px 6px; font-size: 10px; background: #2e7d32; border: 0; margin-right: 4px;" onclick="approveRequest('\${escapeHtml(p.clientId)}')">Approve</button>
-                <button class="button" style="padding: 2px 6px; font-size: 10px; background: #c62828; border: 0;" onclick="rejectRequest('\${escapeHtml(p.clientId)}')">Reject</button>
-                </td>
-                </tr>\`;
+            compactPending.innerHTML = pendingData.pending.map((p) => {
+              return \`<div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 3px 6px; border-radius: 4px;">
+                <span title="\${escapeHtml(p.player)}" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70px;">\${escapeHtml(p.player)}</span>
+                <div style="display: flex; gap: 2px;">
+                  <button class="button" style="padding: 1px 4px; font-size: 9px; background: #2e7d32; border: 0; line-height: 1;" onclick="approveRequest('\${escapeHtml(p.clientId)}')">✓</button>
+                  <button class="button" style="padding: 1px 4px; font-size: 9px; background: #c62828; border: 0; line-height: 1;" onclick="rejectRequest('\${escapeHtml(p.clientId)}')">✗</button>
+                </div>
+              </div>\`;
             }).join("");
           } else {
-            pendingTable.innerHTML = '<tr><td colspan="2" class="muted" style="padding: 8px; font-size: 10px;">No pending requests.</td></tr>';
+            compactPending.innerHTML = '<span class="muted" style="font-size: 9px;">None.</span>';
           }
           
-          const membersTable = document.getElementById("membersTableBody");
+          const compactMembers = document.getElementById("compactMembersList");
           if (membersData.members && membersData.members.length > 0) {
-            membersTable.innerHTML = membersData.members.map((m) => {
+            compactMembers.innerHTML = membersData.members.map((m) => {
               const isMe = m.clientId === myClientId;
-              const kickBtn = isMe ? "" : \`<button class="button" style="padding: 2px 6px; font-size: 10px; background: #c62828; border: 0;" onclick="kickMember('\${escapeHtml(m.clientId)}')">Kick</button>\`;
-              return \`<tr>
-                <td style="padding: 4px; font-size: 11px; text-align: left; padding-left: 8px;">\${escapeHtml(m.player)}</td>
-                <td style="padding: 4px; font-size: 11px; color: var(--muted); text-align: left; padding-left: 8px;">\${escapeHtml(m.role)}</td>
-                <td style="padding: 4px;">\${kickBtn}</td>
-                </tr>\`;
+              const kickBtn = isMe ? "" : \`<button class="button" style="padding: 1px 4px; font-size: 9px; background: #c62828; border: 0; line-height: 1;" onclick="kickMember('\${escapeHtml(m.clientId)}')">Kick</button>\`;
+              return \`<div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 3px 6px; border-radius: 4px;">
+                <span title="\${escapeHtml(m.player)} (\${m.role})" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75px; color: \${isMe ? 'var(--yellow)' : 'inherit'}">\${escapeHtml(m.player)}</span>
+                \${kickBtn}
+              </div>\`;
             }).join("");
           } else {
-            membersTable.innerHTML = '<tr><td colspan="3" class="muted" style="padding: 8px; font-size: 10px;">No members.</td></tr>';
+            compactMembers.innerHTML = '<span class="muted" style="font-size: 9px;">None.</span>';
           }
         } catch (err) {
           console.error("Failed to load admin data", err);
@@ -1375,7 +2937,7 @@ function renderDashboardHtml() {
           localStorage.setItem("omerta_joined_rooms", JSON.stringify(joinedRooms));
         } catch(e){}
         if (activeRoom === roomName) {
-          activeRoom = "TestRoom";
+          activeRoom = "General";
           try {
             localStorage.setItem("omerta_active_room", activeRoom);
           } catch(e){}
@@ -1390,10 +2952,11 @@ function renderDashboardHtml() {
         if (!container) return;
         container.innerHTML = joinedRooms.map((room) => {
           const isActive = room === activeRoom;
-          const isTest = room === "TestRoom";
-          const closeButton = isTest ? "" : \`<span class="room-tab-close" onclick="leaveRoom(event, '\${escapeHtml(room)}')">×</span>\`;
+          const isDefaultRoom = room === "General";
+          const closeButton = isDefaultRoom ? "" : \`<span class="room-tab-close" onclick="leaveRoom(event, '\${escapeHtml(room)}')">×</span>\`;
+          const roomLabel = isDefaultRoom ? "General" : room;
           return \`<div class="room-tab \${isActive ? 'active' : ''}" onclick="selectRoom('\${escapeHtml(room)}')">\` +
-            \`<span>\${escapeHtml(room)}</span>\` +
+            \`<span>\${escapeHtml(roomLabel)}</span>\` +
             closeButton +
             \`</div>\`;
         }).join("");
@@ -1418,6 +2981,8 @@ function renderDashboardHtml() {
         currentRoom = (room || FIXED_ROOM).trim();
         roomInput.value = currentRoom;
         setRoomInUrl(currentRoom);
+        shouldAutoSelectServer = true;
+        lastChatMsgTime = 0;
         startPolling();
       }
 
@@ -1425,15 +2990,95 @@ function renderDashboardHtml() {
       roomInput.readOnly = true;
       applyRoomButton.disabled = true;
       applyRoomButton.textContent = "Locked";
+      populateRankFilterOptions();
       updateRankSortButton();
       updateObayToggleButton();
+      updateSoundButtonState();
 
-      searchInput.addEventListener("input", () => {
-        playerSearchTerm = searchInput.value || "";
-        if (latestState) {
-          renderPlayers(latestState);
+      // Server Filter dropdown removed. Filter state is managed by the sidebar server cards.
+
+      window.handlePlayerProfileSearch = function(event) {
+        event.preventDefault();
+        const input = document.getElementById("playerSearchInput");
+        const val = (input.value || "").trim();
+        if (!val) return;
+
+        const baseUrl = getPlayerProfileBaseUrl(activeServerFilter);
+        window.open(baseUrl + encodeURIComponent(val), "_blank");
+        input.value = "";
+      };
+
+      if (dashboardConnectBtn) {
+        dashboardConnectBtn.addEventListener("click", () => {
+          dashboardConnectBtn.disabled = true;
+          stateMeta.textContent = "Connecting open Omerta tabs...";
+          window.postMessage({ type: "OMERTA_CONNECT_ALL" }, "*");
+          window.setTimeout(() => {
+            if (dashboardConnectBtn) {
+              dashboardConnectBtn.disabled = false;
+            }
+          }, 2500);
+        });
+      }
+
+      isChatAdminOpen = false;
+      window.toggleChatAdmin = function() {
+        const panel = document.getElementById("chatAdminPanel");
+        const btn = document.getElementById("chatAdminToggleBtn");
+        isChatAdminOpen = !isChatAdminOpen;
+        if (isChatAdminOpen) {
+          panel.style.display = "block";
+          btn.textContent = "🛡️ Admin (Open)";
+          btn.style.borderColor = "var(--yellow)";
+          loadAdminData();
+        } else {
+          panel.style.display = "none";
+          btn.textContent = "🛡️ Admin";
+          btn.style.borderColor = "var(--border)";
         }
-      });
+      };
+
+      function playNotificationSound() {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const playBeep = (freq, time, duration) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.setValueAtTime(freq, time);
+            gain.gain.setValueAtTime(0, time);
+            gain.gain.linearRampToValueAtTime(0.15, time + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+            osc.start(time);
+            osc.stop(time + duration);
+          };
+          const now = ctx.currentTime;
+          playBeep(880, now, 0.12);
+          playBeep(1046.5, now + 0.08, 0.25);
+        } catch (e) {
+          console.error("Audio playback failed", e);
+        }
+      }
+
+      function updateSoundButtonState() {
+        const btn = document.getElementById("chatSoundToggleBtn");
+        if (btn) {
+          btn.textContent = isChatSoundEnabled ? "🔊 Sound: ON" : "🔇 Sound: OFF";
+          btn.style.borderColor = isChatSoundEnabled ? "var(--yellow)" : "var(--border)";
+        }
+      }
+
+      window.toggleChatSound = function() {
+        isChatSoundEnabled = !isChatSoundEnabled;
+        try {
+          localStorage.setItem("omerta_chat_sound_enabled", String(isChatSoundEnabled));
+        } catch(e){}
+        updateSoundButtonState();
+        if (isChatSoundEnabled) {
+          playNotificationSound();
+        }
+      };
 
       rankSortButton.addEventListener("click", () => {
         if (rankSortDirection === 0) {
@@ -1450,6 +3095,37 @@ function renderDashboardHtml() {
         }
       });
 
+      if (rankFilterSelect) {
+        rankFilterSelect.addEventListener("change", () => {
+          selectedRankFilter = rankFilterSelect.value || "";
+          isMyCharacterFilterActive = false;
+          if (myCharacterFilterBtn) {
+            myCharacterFilterBtn.classList.remove("active");
+          }
+          if (latestState) {
+            renderPlayers(latestState);
+          }
+        });
+      }
+
+      if (myCharacterFilterBtn) {
+        myCharacterFilterBtn.addEventListener("click", () => {
+          isMyCharacterFilterActive = !isMyCharacterFilterActive;
+          if (isMyCharacterFilterActive) {
+            myCharacterFilterBtn.classList.add("active");
+            selectedRankFilter = "";
+            if (rankFilterSelect) {
+              rankFilterSelect.value = "";
+            }
+          } else {
+            myCharacterFilterBtn.classList.remove("active");
+          }
+          if (latestState) {
+            renderPlayers(latestState);
+          }
+        });
+      }
+
       obayToggleButton.addEventListener("click", () => {
         isObayExpanded = !isObayExpanded;
         updateObayToggleButton();
@@ -1460,7 +3136,8 @@ function renderDashboardHtml() {
         chatFeedback.className = "feedback";
         chatFeedback.textContent = "";
 
-        const message = messageInput.value.trim();
+        let message = messageInput.value.trim();
+        message = message.replace(/\s*\(\)/g, "").trim();
 
         if (!isConnected || !myPlayerName) {
           chatFeedback.className = "feedback error";
@@ -1474,26 +3151,134 @@ function renderDashboardHtml() {
           return;
         }
 
-        window.postMessage({ type: "OMERTA_SEND_CHAT", message }, "*");
-      });
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              room: getChatRoomKey(currentRoom),
+              player: myPlayerName,
+              clientId: myClientId,
+              message
+            })
+          });
 
-      function getChatSender() {
+          const resData = await response.json().catch(() => ({ ok: false, error: "Invalid response" }));
+          if (!response.ok || !resData.ok) {
+            throw new Error(resData.error || "Message send failed");
+          }
+
+          clearActiveTemplateState();
+          messageInput.value = "";
+          chatFeedback.className = "feedback";
+          chatFeedback.textContent = "";
+          updateChatFormState();
+          loadStateAndChat();
+        } catch (error) {
+          chatFeedback.className = "feedback error";
+          chatFeedback.textContent = error.message || "Message send failed";
+        }
+      });      function getChatSender() {
         return myPlayerName || "";
       }
+
+      function getChatTemplateText(serverId, label) {
+        const normalizedServerId = String(serverId || "").trim().toLowerCase();
+        if (normalizedServerId === "com") {
+          return "🔎 " + label + " Looking for ()";
+        }
+        if (normalizedServerId === "pt") {
+          return "🔎 " + label + " Procura ()";
+        }
+        if (normalizedServerId === "nl") {
+          return "🔎 " + label + " Zoekt ()";
+        }
+        return "🔎 " + label + " Ariyor ()";
+      }
+
+      function buildChatTemplate(label) {
+        return getChatTemplateText(getActiveChatServerId(), label);
+      }
+
+      function createTemplateState(template) {
+        const openIndex = template.indexOf("(");
+        const closeIndex = template.lastIndexOf(")");
+        if (openIndex < 0 || closeIndex <= openIndex) {
+          return null;
+        }
+        return {
+          prefix: template.slice(0, openIndex + 1),
+          suffix: template.slice(closeIndex),
+        };
+      }
+
+      function clearActiveTemplateState() {
+        activeTemplateState = null;
+      }
+
+      function syncTemplateMessageInput(cursorPosition) {
+        if (!activeTemplateState) {
+          return;
+        }
+
+        const prefix = activeTemplateState.prefix;
+        const suffix = activeTemplateState.suffix;
+        let innerText = String(messageInput.value || "");
+
+        if (innerText.startsWith(prefix) && innerText.endsWith(suffix) && innerText.length >= prefix.length + suffix.length) {
+          innerText = innerText.slice(prefix.length, innerText.length - suffix.length);
+        } else {
+          const fallbackOpen = innerText.indexOf("(");
+          const fallbackClose = innerText.lastIndexOf(")");
+          if (fallbackOpen >= 0 && fallbackClose > fallbackOpen) {
+            innerText = innerText.slice(fallbackOpen + 1, fallbackClose);
+          }
+        }
+
+        innerText = innerText.replace(/[()]/g, "").replace(/\\s+/g, " ").trim().toUpperCase();
+        messageInput.value = prefix + innerText + suffix;
+
+        const minPos = prefix.length;
+        const maxPos = prefix.length + innerText.length;
+        const nextPos = Math.max(minPos, Math.min(maxPos, Number(cursorPosition) || maxPos));
+        messageInput.selectionStart = messageInput.selectionEnd = nextPos;
+      }
+
+      window.insertChatTemplate = function(label) {
+        const template = buildChatTemplate(label);
+        activeTemplateState = createTemplateState(template);
+        messageInput.value = template;
+        messageInput.focus();
+        syncTemplateMessageInput(template.indexOf("(") + 1);
+      };
+
+      window.replyToChatMessage = function(playerName) {
+        const safePlayerName = String(playerName || "").trim();
+        if (!safePlayerName) return;
+        clearActiveTemplateState();
+        messageInput.value = "+ " + safePlayerName + " ";
+        messageInput.focus();
+        messageInput.selectionStart = messageInput.selectionEnd = messageInput.value.length;
+      };
 
       function updateChatFormState() {
         const sendBtn = chatForm.querySelector("button[type='submit']");
         const emojiBtn = document.getElementById("emojiButton");
+        const shortcutButtons = document.querySelectorAll(".chat-shortcut");
         if (isConnected && myPlayerName) {
           messageInput.disabled = false;
           if (sendBtn) sendBtn.disabled = false;
           if (emojiBtn) emojiBtn.disabled = false;
+          shortcutButtons.forEach((button) => { button.disabled = false; });
           chatFeedback.className = "feedback success";
           chatFeedback.textContent = "Connected as " + myPlayerName;
         } else {
           messageInput.disabled = true;
           if (sendBtn) sendBtn.disabled = true;
           if (emojiBtn) emojiBtn.disabled = true;
+          shortcutButtons.forEach((button) => { button.disabled = true; });
           chatFeedback.className = "feedback error";
           chatFeedback.textContent = "Open Omerta and wait for extension to connect.";
         }
@@ -1509,37 +3294,53 @@ function renderDashboardHtml() {
           const wasConnected = isConnected;
           const oldName = myPlayerName;
           const oldClientId = myClientId;
-          isConnected = data.connected;
-          myPlayerName = data.player || "";
-          myClientId = data.clientId || "";
+          const responseServerId = String(data.serverId || "").trim().toLowerCase();
+          if (["tr", "com", "nl", "pt"].includes(responseServerId)) {
+            dashboardNicknames[responseServerId] = data.player || "-";
+            updateNicknameCards();
+          }
           
-          if (isConnected !== wasConnected || myPlayerName !== oldName || myClientId !== oldClientId) {
-            updateChatFormState();
-            if (latestState) {
-              renderPlayers(latestState);
+          const isActiveServer = responseServerId === getActiveChatServerId();
+          if (isActiveServer) {
+            isConnected = data.connected;
+            myPlayerName = data.player || "";
+            myClientId = data.clientId || "";
+            
+            if (isConnected !== wasConnected || myPlayerName !== oldName || myClientId !== oldClientId) {
+              updateChatFormState();
+              if (latestState) {
+                renderPlayers(latestState);
+              }
             }
           }
           
           if (data.room !== activeRoom) {
             window.postMessage({ type: "OMERTA_SET_ROOM", room: activeRoom }, "*");
           }
-        } else if (data.type === "OMERTA_CHAT_SENT") {
-          messageInput.value = "";
-          chatFeedback.className = "feedback";
-          chatFeedback.textContent = "";
-          updateChatFormState();
-          loadStateAndChat();
-        } else if (data.type === "OMERTA_CHAT_ERROR") {
-          chatFeedback.className = "feedback error";
-          chatFeedback.textContent = data.error || "Message send failed";
+        } else if (data.type === "OMERTA_CONNECT_RESULT") {
+          if (dashboardConnectBtn) {
+            dashboardConnectBtn.disabled = false;
+          }
+          if (data.ok) {
+            stateMeta.textContent = "Connect sent to " + (Number(data.count) || 0) + " tab(s).";
+          } else {
+            stateMeta.textContent = data.error || "Connect failed.";
+          }
         }
       });
 
       // Poll connection status
       window.setInterval(() => {
-        window.postMessage({ type: "OMERTA_GET_IDENTITY" }, "*");
+        window.postMessage({ type: "OMERTA_GET_IDENTITY", serverId: activeServerFilter }, "*");
+        ["tr", "com", "nl", "pt"].forEach((srv) => {
+          window.postMessage({ type: "OMERTA_GET_IDENTITY", serverId: srv }, "*");
+        });
       }, 1000);
-      window.postMessage({ type: "OMERTA_GET_IDENTITY" }, "*");
+      window.postMessage({ type: "OMERTA_GET_IDENTITY", serverId: activeServerFilter }, "*");
+      ["tr", "com", "nl", "pt"].forEach((srv) => {
+        window.postMessage({ type: "OMERTA_GET_IDENTITY", serverId: srv }, "*");
+      });
+      updateNicknameCards();
 
       // Custom Emoji Panel interaction
       const emojiButton = document.getElementById("emojiButton");
@@ -1576,13 +3377,263 @@ function renderDashboardHtml() {
         emojiPanel.style.display = "none";
       });
 
+      document.querySelectorAll(".chat-shortcut").forEach((button) => {
+        button.addEventListener("click", () => {
+          insertChatTemplate(button.dataset.template || "");
+        });
+      });
+
       // Keydown interaction (Enter sends, Shift+Enter newlines)
       messageInput.addEventListener("keydown", (event) => {
+        if (activeTemplateState) {
+          const prefixLength = activeTemplateState.prefix.length;
+          const suffixLength = activeTemplateState.suffix.length;
+          const editableEnd = messageInput.value.length - suffixLength;
+          const selectionStart = messageInput.selectionStart || 0;
+          const selectionEnd = messageInput.selectionEnd || 0;
+
+          if (event.key === "Backspace" && selectionStart <= prefixLength && selectionEnd <= prefixLength) {
+            event.preventDefault();
+            messageInput.selectionStart = messageInput.selectionEnd = prefixLength;
+            return;
+          }
+
+          if (event.key === "Delete" && selectionStart >= editableEnd) {
+            event.preventDefault();
+            messageInput.selectionStart = messageInput.selectionEnd = editableEnd;
+            return;
+          }
+
+          if (event.key === "Home") {
+            event.preventDefault();
+            messageInput.selectionStart = messageInput.selectionEnd = prefixLength;
+            return;
+          }
+        }
+
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           chatForm.requestSubmit();
         }
       });
+
+      messageInput.addEventListener("input", () => {
+        if (activeTemplateState) {
+          syncTemplateMessageInput(messageInput.selectionStart);
+        }
+      });
+
+      messageInput.addEventListener("click", () => {
+        if (activeTemplateState) {
+          syncTemplateMessageInput(messageInput.selectionStart);
+        }
+      });
+
+      chatMessages.addEventListener("click", (event) => {
+        const replyButton = event.target.closest(".chat-reply-button");
+        if (replyButton) {
+          const playerName = replyButton.getAttribute("data-player") || "";
+          window.replyToChatMessage(playerName);
+          return;
+        }
+
+        const pinButton = event.target.closest(".chat-pin-button");
+        if (pinButton) {
+          const msgId = pinButton.getAttribute("data-msg-id") || "";
+          togglePinMessage(msgId);
+          return;
+        }
+      });
+
+      // Pinned message banner handlers
+      const chatPinnedBanner = document.getElementById("chatPinnedBanner");
+      if (chatPinnedBanner) {
+        chatPinnedBanner.addEventListener("click", (event) => {
+          const unpinBtn = event.target.closest("#chatPinnedUnpinBtn");
+          const pinnedMsgId = chatPinnedBanner.dataset.pinnedMsgId;
+          if (!pinnedMsgId) return;
+
+          if (unpinBtn) {
+            event.stopPropagation();
+            togglePinMessage(pinnedMsgId);
+          } else {
+            // Scroll to pinned message
+            const msgEl = chatMessages.querySelector('[data-msg-id="' + pinnedMsgId + '"]');
+            if (msgEl) {
+              msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              msgEl.style.transition = "background-color 0.5s ease";
+              const originalBg = msgEl.style.backgroundColor;
+              msgEl.style.backgroundColor = 'rgba(90, 169, 255, 0.3)';
+              setTimeout(() => {
+                msgEl.style.backgroundColor = originalBg;
+              }, 2000);
+            }
+          }
+        });
+      }
+
+      async function togglePinMessage(msgId) {
+        if (!currentRoom || !myClientId) return;
+        try {
+          const res = await fetch("/api/chat/pin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room: getChatRoomKey(currentRoom), clientId: myClientId, messageId: msgId })
+          });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            loadStateAndChat();
+          } else {
+            alert(data.error || "Failed to pin/unpin message.");
+          }
+        } catch(e) {
+          alert("Error: " + e.message);
+        }
+      }
+
+      let isNotesPanelExpanded = false;
+      let activeNotesTab = null; // 'targets' or 'notes'
+
+      window.toggleHeaderTab = function(tab) {
+        const notesPanel = document.getElementById('notesPanel');
+        const tabTargetsView = document.getElementById('tabTargetsView');
+        const tabNotesView = document.getElementById('tabNotesView');
+        const hTBtn = document.getElementById('headerTargetsBtn');
+        const hNBtn = document.getElementById('headerNotesBtn');
+        if (!notesPanel || !tabTargetsView || !tabNotesView) return;
+
+        if (activeNotesTab === tab) {
+          // Same button clicked again — toggle close
+          notesPanel.style.display = 'none';
+          activeNotesTab = null;
+          if (hTBtn) { hTBtn.style.borderColor = 'var(--border)'; hTBtn.style.color = 'var(--muted)'; }
+          if (hNBtn) { hNBtn.style.borderColor = 'var(--border)'; hNBtn.style.color = 'var(--muted)'; }
+        } else {
+          // Switch to this tab and open panel
+          activeNotesTab = tab;
+          notesPanel.style.display = 'block';
+          if (tab === 'targets') {
+            tabTargetsView.style.display = 'block';
+            tabNotesView.style.display = 'none';
+            if (hTBtn) { hTBtn.style.borderColor = 'var(--accent)'; hTBtn.style.color = 'var(--accent)'; }
+            if (hNBtn) { hNBtn.style.borderColor = 'var(--border)'; hNBtn.style.color = 'var(--muted)'; }
+          } else {
+            tabTargetsView.style.display = 'none';
+            tabNotesView.style.display = 'block';
+            if (hNBtn) { hNBtn.style.borderColor = 'var(--accent)'; hNBtn.style.color = 'var(--accent)'; }
+            if (hTBtn) { hTBtn.style.borderColor = 'var(--border)'; hTBtn.style.color = 'var(--muted)'; }
+          }
+        }
+      };
+
+      // Legacy toggleNotesPanelBody kept for safety (no-op)
+      window.toggleNotesPanelBody = function() {};
+
+
+      window.toggleTargetDead = async function(targetId) {
+        if (!currentRoom || !myClientId) return;
+        try {
+          const res = await fetch('/api/rooms/targets/toggle-dead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room: currentRoom, clientId: myClientId, targetId, player: myPlayerName })
+          });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            loadStateAndChat();
+          } else {
+            alert(data.error || 'Failed to toggle target status.');
+          }
+        } catch(e) {
+          alert(e.message);
+        }
+      };
+
+      window.handleNewTarget = async function(event) {
+        event.preventDefault();
+        const input = document.getElementById("targetNameInput");
+        const name = (input.value || "").trim();
+        if (!name || !currentRoom || !myClientId) return;
+
+        try {
+          const res = await fetch("/api/rooms/targets/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room: currentRoom, clientId: myClientId, player: myPlayerName, name })
+          });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            input.value = "";
+            loadStateAndChat();
+          } else {
+            alert(data.error || "Failed to add target.");
+          }
+        } catch(e) {
+          alert(e.message);
+        }
+      };
+
+      window.deleteTarget = async function(targetId) {
+        if (!confirm("Delete this target?")) return;
+        try {
+          const res = await fetch("/api/rooms/targets/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room: currentRoom, clientId: myClientId, targetId })
+          });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            loadStateAndChat();
+          } else {
+            alert(data.error || "Failed to delete target.");
+          }
+        } catch(e) {
+          alert(e.message);
+        }
+      };
+
+      window.handleNewNote = async function(event) {
+        event.preventDefault();
+        const input = document.getElementById("noteTextInput");
+        const text = (input.value || "").trim();
+        if (!text || !currentRoom || !myClientId) return;
+
+        try {
+          const res = await fetch("/api/rooms/notes/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room: currentRoom, clientId: myClientId, player: myPlayerName, text })
+          });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            input.value = "";
+            loadStateAndChat();
+          } else {
+            alert(data.error || "Failed to add note.");
+          }
+        } catch(e) {
+          alert(e.message);
+        }
+      };
+
+      window.deleteNote = async function(noteId) {
+        if (!confirm("Delete this note?")) return;
+        try {
+          const res = await fetch("/api/rooms/notes/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room: currentRoom, clientId: myClientId, noteId })
+          });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            loadStateAndChat();
+          } else {
+            alert(data.error || "Failed to delete note.");
+          }
+        } catch(e) {
+          alert(e.message);
+        }
+      };
 
       updateChatFormState();
 
@@ -1708,6 +3759,8 @@ function getOrCreateRoom(roomName) {
       players: {},
       chat: [],
       obay: null,
+      notes: [],
+      targets: [],
     };
   } else {
     rooms[roomName].players = rooms[roomName].players || {};
@@ -1715,28 +3768,84 @@ function getOrCreateRoom(roomName) {
     rooms[roomName].obay = rooms[roomName].obay || null;
     rooms[roomName].members = rooms[roomName].members || {};
     rooms[roomName].pending = rooms[roomName].pending || {};
+    rooms[roomName].notes = rooms[roomName].notes || [];
+    rooms[roomName].targets = rooms[roomName].targets || [];
   }
   return rooms[roomName];
 }
 
 function getRoomAccess(roomName, clientId) {
   if (!isValidRoom(roomName)) return "none";
-  if (roomName === "TestRoom") return "member";
-  
+  if (roomName === "General" || roomName === "TestRoom") return "member";
+
   const room = rooms[roomName];
   if (!room) return "none";
   if (!room.ownerClientId) return "member"; // If room has no owner, it is public
   if (room.ownerClientId === clientId) return "owner";
-  
+
   if (room.members && room.members[clientId]) {
     return room.members[clientId].role || "member";
   }
-  
+
+  if (isRoomOwnerInactive(room)) {
+    return "none";
+  }
+
   if (room.pending && room.pending[clientId]) {
     return "pending";
   }
-  
+
   return "none";
+}
+
+function normalizePlayerName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isSamePlayerName(a, b) {
+  return normalizePlayerName(a) !== "" && normalizePlayerName(a) === normalizePlayerName(b);
+}
+
+function reclaimRoomOwnership(roomData, clientId, player) {
+  const joinedAt = getServerTime();
+  const oldOwnerClientId = roomData.ownerClientId || "";
+
+  if (oldOwnerClientId && oldOwnerClientId !== clientId && roomData.members[oldOwnerClientId] && isSamePlayerName(roomData.members[oldOwnerClientId].player, player)) {
+    delete roomData.members[oldOwnerClientId];
+  }
+
+  Object.keys(roomData.pending || {}).forEach((pendingClientId) => {
+    const pendingEntry = roomData.pending[pendingClientId];
+    if (pendingClientId === clientId || isSamePlayerName(pendingEntry && pendingEntry.player, player)) {
+      delete roomData.pending[pendingClientId];
+    }
+  });
+
+  roomData.ownerClientId = clientId;
+  roomData.ownerPlayer = String(player || "").trim();
+  roomData.members[clientId] = {
+    player: String(player || "").trim(),
+    role: "owner",
+    joinedAt
+  };
+}
+
+function isRoomOwnerInactive(roomData) {
+  if (!roomData || !roomData.ownerClientId) {
+    return true;
+  }
+
+  const ownerEntry = roomData.players && roomData.players[roomData.ownerClientId];
+  if (!ownerEntry) {
+    return true;
+  }
+
+  const updatedAt = Number(ownerEntry.updatedAt);
+  if (!Number.isFinite(updatedAt)) {
+    return true;
+  }
+
+  return getServerTime() - updatedAt > 90;
 }
 
 app.get("/", (_req, res) => {
@@ -1744,7 +3853,7 @@ app.get("/", (_req, res) => {
 });
 
 app.post("/api/update", requireFamilyKey, (req, res) => {
-  const { room, player, game, updatedAt, progression, cooldowns, clientId } = req.body || {};
+  const { room, player, game, updatedAt, progression, cooldowns, clientId, serverId, serverName, hostname } = req.body || {};
 
   if (!isValidRoom(room)) {
     res.status(400).json({ ok: false, error: "Invalid room" });
@@ -1762,22 +3871,34 @@ app.post("/api/update", requireFamilyKey, (req, res) => {
   }
 
   const access = getRoomAccess(room, clientId);
-  if (room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
     res.status(403).json({ ok: false, error: "Access denied" });
     return;
   }
 
   const roomData = getOrCreateRoom(room);
-  roomData.players[player] = {
+  const targetServerId = (serverId || "nl").toLowerCase();
+  const playerKey = targetServerId + ":" + player.trim();
+
+  roomData.players[playerKey] = {
+    clientId: clientId || "",
     player: player.trim(),
+    serverId: targetServerId,
+    serverName: serverName || "nl",
+    hostname: hostname || "barafranca.nl",
     game: typeof game === "string" ? game : "",
     updatedAt: Number.isFinite(updatedAt) ? updatedAt : getServerTime(),
     progression: isPlainObject(progression)
       ? {
-          rank: typeof progression.rank === "string" ? progression.rank.trim() : "",
-          progressionPercent: typeof progression.progressionPercent === "string" ? progression.progressionPercent.trim() : "",
-          activityPercent: typeof progression.activityPercent === "string" ? progression.activityPercent.trim() : "",
-        }
+        rank: typeof progression.rank === "string" ? progression.rank.trim() : "",
+        progressionPercent: typeof progression.progressionPercent === "string" ? progression.progressionPercent.trim() : "",
+        activityPercent: typeof progression.activityPercent === "string" ? progression.activityPercent.trim() : "",
+        bullets: typeof progression.bullets === "string" ? progression.bullets.trim() : "",
+        money: typeof progression.money === "string" ? progression.money.trim() : "",
+        bank: typeof progression.bank === "string" ? progression.bank.trim() : "",
+        platingLabel: typeof progression.platingLabel === "string" ? progression.platingLabel.trim() : "",
+        platingPercent: typeof progression.platingPercent === "string" ? progression.platingPercent.trim() : "",
+      }
       : {},
     cooldowns,
   };
@@ -1794,31 +3915,72 @@ app.get("/api/state", (req, res) => {
   }
 
   const access = getRoomAccess(room, clientId);
-  if (room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
     res.status(403).json({ ok: false, error: "Access denied" });
     return;
   }
 
   const serverTime = getServerTime();
   const roomData = rooms[room] || { players: {} };
-  const players = Object.values(roomData.players || {}).map((entry) => ({
-    player: entry.player,
-    game: entry.game,
-    updatedAt: entry.updatedAt,
-    offline: serverTime - entry.updatedAt > 90,
-    progression: entry.progression || {},
-    cooldowns: entry.cooldowns,
-  }));
+  pruneTransientTestPlayers(roomData, serverTime);
+  const players = Object.values(roomData.players || {}).map((entry) => {
+    let progression = entry.progression || {};
+    let cooldowns = applyLockedCooldowns(entry.cooldowns || {}, progression.rank);
+
+    if (room.toLowerCase() === "general") {
+      progression = {
+        rank: progression.rank,
+        platingLabel: progression.platingLabel,
+        progressionPercent: "***",
+        activityPercent: "***",
+        platingPercent: "***",
+        bullets: "***",
+        money: "***",
+        bank: "***",
+      };
+
+      const censoredCooldowns = {};
+      const allowedKeys = ["heist", "organizedCrime", "megaOrganizedCrime", "spot"];
+      for (const [k, v] of Object.entries(cooldowns)) {
+        if (allowedKeys.includes(k)) {
+          censoredCooldowns[k] = applyLockedCooldowns({ [k]: v }, progression.rank)[k];
+        } else {
+          censoredCooldowns[k] = {
+            label: v.label,
+            timeEnd: 0,
+            ready: false,
+            censored: true
+          };
+        }
+      }
+      cooldowns = censoredCooldowns;
+    }
+
+    return {
+      clientId: entry.clientId || "",
+      player: entry.player,
+      serverId: entry.serverId || "nl",
+      serverName: entry.serverName || "nl",
+      hostname: entry.hostname || "barafranca.nl",
+      game: entry.game,
+      updatedAt: entry.updatedAt,
+      offline: serverTime - entry.updatedAt > 90,
+      progression,
+      cooldowns,
+    };
+  });
 
   res.json({
     room,
     serverTime,
     players,
+    notes: roomData.notes || [],
+    targets: roomData.targets || [],
   });
 });
 
 app.post("/api/obay/update", requireFamilyKey, (req, res) => {
-  const { room, player, updatedAt, items, clientId } = req.body || {};
+  const { room, player, updatedAt, items, clientId, serverId } = req.body || {};
 
   if (!isValidRoom(room)) {
     res.status(400).json({ ok: false, error: "Invalid room" });
@@ -1836,13 +3998,15 @@ app.post("/api/obay/update", requireFamilyKey, (req, res) => {
   }
 
   const access = getRoomAccess(room, clientId);
-  if (room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
     res.status(403).json({ ok: false, error: "Access denied" });
     return;
   }
 
   const roomData = getOrCreateRoom(room);
-  roomData.obay = {
+  roomData.obay = roomData.obay || {};
+  const targetServerId = (serverId || "nl").toLowerCase();
+  roomData.obay[targetServerId] = {
     updatedAt: Number.isFinite(updatedAt) ? updatedAt : getServerTime(),
     updatedBy: player.trim(),
     items: items.map((item) => ({
@@ -1858,7 +4022,7 @@ app.post("/api/obay/update", requireFamilyKey, (req, res) => {
 });
 
 app.get("/api/obay", (req, res) => {
-  const { room, clientId } = req.query;
+  const { room, clientId, serverId } = req.query;
 
   if (!isValidRoom(room)) {
     res.status(400).json({ ok: false, error: "Invalid room" });
@@ -1866,13 +4030,15 @@ app.get("/api/obay", (req, res) => {
   }
 
   const access = getRoomAccess(room, clientId);
-  if (room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
     res.status(403).json({ ok: false, error: "Access denied" });
     return;
   }
 
-  const roomData = rooms[room] || { obay: null };
-  const obay = roomData.obay || {
+  const targetServerId = (serverId || "nl").toLowerCase();
+  const roomData = rooms[room] || {};
+  const obayStore = roomData.obay || {};
+  const obay = obayStore[targetServerId] || {
     updatedAt: 0,
     updatedBy: "",
     items: [],
@@ -1880,6 +4046,7 @@ app.get("/api/obay", (req, res) => {
 
   res.json({
     room,
+    serverId: targetServerId,
     updatedAt: obay.updatedAt,
     updatedBy: obay.updatedBy,
     items: obay.items,
@@ -1899,27 +4066,33 @@ app.post("/api/chat", (req, res) => {
     return;
   }
 
-  if (typeof message !== "string" || !message.trim()) {
+  let cleanMessage = typeof message === "string" ? message.trim() : "";
+  cleanMessage = cleanMessage.replace(/\s*\(\)/g, "").trim();
+
+  if (!cleanMessage) {
     res.status(400).json({ ok: false, error: "Message is required" });
     return;
   }
 
-  if (message.length > 300) {
+  if (cleanMessage.length > 300) {
     res.status(400).json({ ok: false, error: "Message is too long" });
     return;
   }
 
   const access = getRoomAccess(room, clientId);
-  if (room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
     res.status(403).json({ ok: false, error: "Access denied" });
     return;
   }
 
   const roomData = getOrCreateRoom(room);
+  const messageId = "msg_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
   roomData.chat.push({
+    id: messageId,
     player: player.trim(),
-    message: escapeHtml(message),
+    message: escapeHtml(cleanMessage),
     createdAt: getServerTime(),
+    pinned: false,
   });
 
   if (roomData.chat.length > 100) {
@@ -1938,7 +4111,7 @@ app.get("/api/chat", (req, res) => {
   }
 
   const access = getRoomAccess(room, clientId);
-  if (room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
     res.status(403).json({ ok: false, error: "Access denied" });
     return;
   }
@@ -1948,6 +4121,200 @@ app.get("/api/chat", (req, res) => {
     room,
     messages: roomData.chat || [],
   });
+});
+
+app.post("/api/chat/pin", (req, res) => {
+  const { room, messageId, clientId } = req.body || {};
+
+  if (!isValidRoom(room)) {
+    res.status(400).json({ ok: false, error: "Invalid room" });
+    return;
+  }
+
+  const access = getRoomAccess(room, clientId);
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+    res.status(403).json({ ok: false, error: "Access denied" });
+    return;
+  }
+
+  const roomData = getOrCreateRoom(room);
+  const message = (roomData.chat || []).find((m) => m.id === messageId);
+  if (!message) {
+    res.status(404).json({ ok: false, error: "Message not found" });
+    return;
+  }
+
+  message.pinned = !message.pinned;
+  res.json({ ok: true, pinned: message.pinned });
+});
+
+app.post("/api/rooms/notes/add", (req, res) => {
+  const { room, clientId, player, text } = req.body || {};
+
+  if (!isValidRoom(room)) {
+    res.status(400).json({ ok: false, error: "Invalid room" });
+    return;
+  }
+
+  if (typeof text !== "string" || !text.trim()) {
+    res.status(400).json({ ok: false, error: "Text is required" });
+    return;
+  }
+
+  const access = getRoomAccess(room, clientId);
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+    res.status(403).json({ ok: false, error: "Access denied" });
+    return;
+  }
+
+  const roomData = getOrCreateRoom(room);
+  roomData.notes = roomData.notes || [];
+  const noteId = "note_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
+  roomData.notes.push({
+    id: noteId,
+    text: text.trim(),
+    addedBy: (player || "Unknown").trim(),
+    createdAt: getServerTime(),
+  });
+
+  saveRoomsStore(rooms);
+  res.json({ ok: true });
+});
+
+app.post("/api/rooms/notes/delete", (req, res) => {
+  const { room, clientId, noteId } = req.body || {};
+
+  if (!isValidRoom(room)) {
+    res.status(400).json({ ok: false, error: "Invalid room" });
+    return;
+  }
+
+  const access = getRoomAccess(room, clientId);
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+    res.status(403).json({ ok: false, error: "Access denied" });
+    return;
+  }
+
+  const roomData = getOrCreateRoom(room);
+  roomData.notes = roomData.notes || [];
+  const originalLength = roomData.notes.length;
+  roomData.notes = roomData.notes.filter((n) => n.id !== noteId);
+
+  if (roomData.notes.length < originalLength) {
+    saveRoomsStore(rooms);
+    res.json({ ok: true });
+  } else {
+    res.status(404).json({ ok: false, error: "Note not found" });
+  }
+});
+
+app.post("/api/rooms/targets/add", (req, res) => {
+  const { room, clientId, player, name } = req.body || {};
+
+  if (!isValidRoom(room)) {
+    res.status(400).json({ ok: false, error: "Invalid room" });
+    return;
+  }
+
+  if (typeof name !== "string" || !name.trim()) {
+    res.status(400).json({ ok: false, error: "Target name is required" });
+    return;
+  }
+
+  const access = getRoomAccess(room, clientId);
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+    res.status(403).json({ ok: false, error: "Access denied" });
+    return;
+  }
+
+  const roomData = getOrCreateRoom(room);
+  roomData.targets = roomData.targets || [];
+  const targetId = 'target_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+  roomData.targets.push({
+    id: targetId,
+    name: name.trim(),
+    addedBy: (player || 'Unknown').trim(),
+    createdAt: getServerTime(),
+    dead: false,
+  });
+
+  saveRoomsStore(rooms);
+  res.json({ ok: true });
+});
+
+app.post('/api/rooms/targets/toggle-dead', (req, res) => {
+  const { room, clientId, targetId, player } = req.body || {};
+
+  if (!isValidRoom(room)) {
+    res.status(400).json({ ok: false, error: 'Invalid room' });
+    return;
+  }
+
+  const access = getRoomAccess(room, clientId);
+  if (room !== 'General' && room !== 'TestRoom' && rooms[room] && rooms[room].ownerClientId && access !== 'owner' && access !== 'member') {
+    res.status(403).json({ ok: false, error: 'Access denied' });
+    return;
+  }
+
+  const roomData = getOrCreateRoom(room);
+  roomData.targets = roomData.targets || [];
+  const target = roomData.targets.find((t) => t.id === targetId);
+  if (!target) {
+    res.status(404).json({ ok: false, error: 'Target not found' });
+    return;
+  }
+
+  target.dead = !target.dead;
+  saveRoomsStore(rooms);
+
+  // Post a system notification to the room chat
+  const actorName = (player || 'Someone').trim();
+  const systemMsgId = 'sys_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+  const systemText = target.dead
+    ? '\u2620\ufe0f ' + actorName + ' marked \u201c' + target.name + '\u201d as DEAD.'
+    : '\u2705 ' + actorName + ' marked \u201c' + target.name + '\u201d as ALIVE.';
+  roomData.chat = roomData.chat || [];
+  roomData.chat.push({
+    id: systemMsgId,
+    player: '\u2699\ufe0f System',
+    message: systemText,
+    createdAt: getServerTime(),
+    pinned: false,
+    system: true,
+  });
+  if (roomData.chat.length > 100) {
+    roomData.chat = roomData.chat.slice(-100);
+  }
+
+  res.json({ ok: true, dead: target.dead });
+});
+
+
+app.post("/api/rooms/targets/delete", (req, res) => {
+  const { room, clientId, targetId } = req.body || {};
+
+  if (!isValidRoom(room)) {
+    res.status(400).json({ ok: false, error: "Invalid room" });
+    return;
+  }
+
+  const access = getRoomAccess(room, clientId);
+  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
+    res.status(403).json({ ok: false, error: "Access denied" });
+    return;
+  }
+
+  const roomData = getOrCreateRoom(room);
+  roomData.targets = roomData.targets || [];
+  const originalLength = roomData.targets.length;
+  roomData.targets = roomData.targets.filter((t) => t.id !== targetId);
+
+  if (roomData.targets.length < originalLength) {
+    saveRoomsStore(rooms);
+    res.json({ ok: true });
+  } else {
+    res.status(404).json({ ok: false, error: "Target not found" });
+  }
 });
 
 app.post("/api/rooms/create", (req, res) => {
@@ -1961,16 +4328,15 @@ app.post("/api/rooms/create", (req, res) => {
 
   const roomData = getOrCreateRoom(room);
   if (roomData.ownerClientId && roomData.ownerClientId !== clientId) {
+    if (isSamePlayerName(roomData.ownerPlayer, player) || isRoomOwnerInactive(roomData)) {
+      reclaimRoomOwnership(roomData, clientId, player);
+      saveRoomsStore(rooms);
+      return res.json({ ok: true, role: "owner" });
+    }
     return res.status(400).json({ ok: false, error: "Room already exists and is owned by someone else" });
   }
 
-  roomData.ownerClientId = clientId;
-  roomData.ownerPlayer = player;
-  roomData.members[clientId] = {
-    player: player.trim(),
-    role: "owner",
-    joinedAt: getServerTime()
-  };
+  reclaimRoomOwnership(roomData, clientId, player);
   saveRoomsStore(rooms);
 
   res.json({ ok: true, role: "owner" });
@@ -1987,13 +4353,13 @@ app.post("/api/rooms/request-join", (req, res) => {
 
   const roomData = getOrCreateRoom(room);
   if (!roomData.ownerClientId) {
-    roomData.ownerClientId = clientId;
-    roomData.ownerPlayer = player;
-    roomData.members[clientId] = {
-      player: player.trim(),
-      role: "owner",
-      joinedAt: getServerTime()
-    };
+    reclaimRoomOwnership(roomData, clientId, player);
+    saveRoomsStore(rooms);
+    return res.json({ ok: true, role: "owner" });
+  }
+
+  if (isSamePlayerName(roomData.ownerPlayer, player) || isRoomOwnerInactive(roomData)) {
+    reclaimRoomOwnership(roomData, clientId, player);
     saveRoomsStore(rooms);
     return res.json({ ok: true, role: "owner" });
   }
@@ -2125,6 +4491,6 @@ app.post("/api/rooms/kick", (req, res) => {
   res.status(400).json({ ok: false, error: "Target player not member" });
 });
 
-app.listen(port, () => {
-  console.log(`Omerta Family Cooldown Room server running on http://localhost:${port}`);
+app.listen(port, "0.0.0.0", () => {
+  console.log(`Omerta Portal server running on http://localhost:${port}`);
 });
