@@ -20,20 +20,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
 
-  chrome.tabs.query({ url: OMERTA_TAB_PATTERNS }, async (tabs) => {
+  (async () => {
     try {
+      const tabs = await chrome.tabs.query({ url: OMERTA_TAB_PATTERNS });
       const validTabs = (tabs || []).filter((tab) => typeof tab.id === "number");
       if (validTabs.length === 0) {
         sendResponse({ ok: false, error: "No open Omerta tab found." });
         return;
       }
 
-      await Promise.all(validTabs.map((tab) => chrome.tabs.reload(tab.id)));
+      await Promise.all(
+        validTabs.map((tab) => chrome.tabs.reload(tab.id))
+      );
+
       sendResponse({ ok: true, count: validTabs.length });
     } catch (error) {
       sendResponse({ ok: false, error: error && error.message ? error.message : "Connect failed." });
     }
-  });
+  })();
 
   return true;
 });

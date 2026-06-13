@@ -1645,7 +1645,15 @@ if (!isDashboard) {
       }
     } else if (data.type === "OMERTA_CONNECT_ALL") {
       try {
-        const response = await chrome.runtime.sendMessage({ type: "OMERTA_CONNECT_ALL" });
+        const response = await new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({ type: "OMERTA_CONNECT_ALL" }, (result) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message || "Connect failed."));
+              return;
+            }
+            resolve(result);
+          });
+        });
         if (!response || !response.ok) {
           throw new Error((response && response.error) || "Connect failed.");
         }
