@@ -93,6 +93,30 @@ app.use(cors());
 app.use(express.json());
 app.use("/icons", express.static(path.join(__dirname, "../icons")));
 
+app.get("/privacy", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Privacy Policy</title>
+    </head>
+    <body>
+      <h1>Privacy Policy</h1>
+
+      <p>Omerta Portal collects only the information required to provide its features, including dashboard synchronization and room chat functionality.</p>
+
+      <p>Room chat messages and supported game page content are processed solely to provide the extension's intended features.</p>
+
+      <p>No user data is sold or shared with third parties for advertising or marketing purposes.</p>
+
+      <p>Data is used exclusively for the operation of Omerta Portal.</p>
+
+      <p>Contact: srhtshr@gmail.com</p>
+    </body>
+    </html>
+  `);
+});
+
 function getServerTime() {
   return Math.floor(Date.now() / 1000);
 }
