@@ -1,3 +1,5 @@
+const DEFAULT_API_URL = "https://omerta-portal.onrender.com";
+
 async function getOrCreateClientId() {
   let stored = await chrome.storage.local.get("CLIENT_ID");
   if (!stored.CLIENT_ID) {
@@ -10,7 +12,7 @@ async function getOrCreateClientId() {
 
 const DEFAULT_SETTINGS = {
   ENABLED: true,
-  API_URL: "http://localhost:3000",
+  API_URL: DEFAULT_API_URL,
   ROOM: "General",
   POLL_INTERVAL_MS: 1000,
   FAMILY_KEY: "",
@@ -24,7 +26,7 @@ const DEFAULT_SETTINGS = {
   LAST_ERROR: "",
   ACTIVE_ROOM: "General",
   enabled: true,
-  apiUrl: "http://localhost:3000",
+  apiUrl: DEFAULT_API_URL,
   room: "General",
   pollIntervalMs: 1000,
   familyKey: "",
@@ -203,15 +205,9 @@ sendNowButton.addEventListener("click", () => {
 openDashboardButton.addEventListener("click", async () => {
   setFeedback(settingsFeedback, "", "");
   const settings = await getSettings();
-  const player = settings.LAST_PLAYER || settings.lastDetectedPlayer || settings.LAST_PLAYER_TR || settings.LAST_PLAYER_COM || settings.LAST_PLAYER_NL || settings.LAST_PLAYER_PT || "";
-  
-  if (player) {
-    const apiUrl = normalizeApiUrl(readSettingValue(settings, "API_URL", "apiUrl", DEFAULT_SETTINGS.apiUrl));
-    const targetUrl = apiUrl.replace(/\/+$/, "") + "/";
-    chrome.tabs.create({ url: targetUrl });
-  } else {
-    setFeedback(settingsFeedback, "error", "Connect first: player name not detected.");
-  }
+  const apiUrl = normalizeApiUrl(readSettingValue(settings, "API_URL", "apiUrl", DEFAULT_SETTINGS.apiUrl));
+  const targetUrl = apiUrl.replace(/\/+$/, "") + "/";
+  chrome.tabs.create({ url: targetUrl });
 });
 
 applySimplifiedDefaults().then(() => {

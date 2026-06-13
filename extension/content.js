@@ -4,6 +4,8 @@ const DASHBOARD_HOSTS = [
   "omerta-portal.onrender.com"
 ];
 
+const DEFAULT_API_URL = "https://omerta-portal.onrender.com";
+
 const isDashboard = DASHBOARD_HOSTS.some(host =>
   window.location.origin.includes(host)
 ) || !!document.getElementById("nicknamePlayerTR");
@@ -145,13 +147,13 @@ async function getOrCreateClientId() {
 }
 
 const STORAGE_DEFAULTS = {
-  API_URL: "http://localhost:3000",
+  API_URL: DEFAULT_API_URL,
   ROOM: "General",
   FAMILY_KEY: "",
   MANUAL_ALIAS: "",
   ENABLED: true,
   POLL_INTERVAL_MS: 1000,
-  apiUrl: "http://localhost:3000",
+  apiUrl: DEFAULT_API_URL,
   room: "General",
   familyKey: "",
   manualAlias: "",
@@ -1562,8 +1564,8 @@ if (!isDashboard) {
         const lookupKeys = {
           LAST_PLAYER: "",
           lastDetectedPlayer: "",
-          API_URL: "http://localhost:3000",
-          apiUrl: "http://localhost:3000",
+          API_URL: DEFAULT_API_URL,
+          apiUrl: DEFAULT_API_URL,
           ROOM: "General",
           room: "General",
         };
@@ -1577,7 +1579,7 @@ if (!isDashboard) {
         } else {
           player = stored.LAST_PLAYER || stored.lastDetectedPlayer || "";
         }
-        const apiUrl = stored.API_URL || stored.apiUrl || "http://localhost:3000";
+        const apiUrl = stored.API_URL || stored.apiUrl || DEFAULT_API_URL;
         const room = stored.ROOM || stored.room || "General";
         const clientId = await getOrCreateClientId();
 
