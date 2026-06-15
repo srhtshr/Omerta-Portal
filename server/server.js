@@ -1325,12 +1325,238 @@ function renderDashboardHtml() {
         margin-top: 2px;
       }
 
+      .layout {
+        display: block;
+      }
+
+      .portal-workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 2.05fr) minmax(360px, 1fr);
+        gap: 14px;
+        align-items: stretch;
+        margin-top: 12px;
+        margin-bottom: 14px;
+      }
+
+      .game-chats-panel,
+      .private-chat-panel {
+        min-height: 0;
+      }
+
+      .game-chats-panel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .portal-chat-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .portal-chat-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .dual-chat-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        padding: 0 12px 12px;
+      }
+
+      .game-chat-card {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(11, 18, 29, 0.92) 0%, rgba(17, 24, 36, 0.92) 100%);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+        overflow: hidden;
+      }
+
+      .game-chat-card.general .chat-column-title {
+        color: var(--accent);
+      }
+
+      .game-chat-card.crimes .chat-column-title {
+        color: #ff5d5d;
+      }
+
+      .chat-column-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 12px 14px 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+      }
+
+      .chat-column-title {
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .chat-column-caption {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .chat-messages.compact {
+        min-height: 280px;
+        max-height: 280px;
+        padding: 12px;
+      }
+
+      .chat-form.compact {
+        padding: 10px 12px 12px;
+        gap: 8px;
+      }
+
+      .chat-form.compact textarea.input {
+        min-height: 44px;
+      }
+
+      .chat-submit-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .chat-submit-row .button[type="submit"] {
+        min-width: 92px;
+      }
+
+      .chat-submit-row .feedback {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .private-chat-panel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .private-panel-body {
+        display: grid;
+        grid-template-columns: 170px minmax(0, 1fr);
+        gap: 12px;
+        padding: 0 12px 12px;
+        min-height: 0;
+        flex: 1;
+      }
+
+      .private-room-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 0;
+      }
+
+      .private-room-sidebar-title {
+        color: #ae7cff;
+        font-size: 12px;
+        font-weight: 800;
+        padding: 2px 2px 0;
+      }
+
+      .room-tab-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 0;
+      }
+
+      .room-tab {
+        justify-content: space-between;
+        width: 100%;
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .private-room-actions {
+        display: grid;
+        gap: 8px;
+        margin-top: auto;
+      }
+
+      .private-room-action-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .private-chat-main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 14px;
+        background: rgba(7, 12, 21, 0.52);
+        overflow: hidden;
+      }
+
+      .private-chat-stage {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        flex: 1;
+      }
+
+      .private-chat-empty-state {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        min-height: 220px;
+        padding: 20px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .private-chat-main.is-idle #chatPinnedContainer,
+      .private-chat-main.is-idle #chatMessages,
+      .private-chat-main.is-idle #chatForm,
+      .private-chat-main.is-idle #notesPanel {
+        display: none !important;
+      }
+
+      .private-chat-main.is-idle .private-chat-empty-state {
+        display: flex;
+      }
+
+      .private-panel-topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 0 0 10px;
+      }
+
+      .private-panel-topline .status-line {
+        margin: 0;
+      }
+
       @media (max-width: 1100px) {
-        .layout {
+        .portal-workspace,
+        .private-panel-body,
+        .dual-chat-grid {
           grid-template-columns: 1fr;
         }
-
-
 
         .chat {
           height: 560px;
@@ -1502,54 +1728,91 @@ function renderDashboardHtml() {
             </div>
           </section>
 
-          <!-- Room Bar -->
-          <div id="roomBar" class="room-bar">
-            <div id="roomTabsContainer" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
-            <div style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
-              <input id="newRoomInput" class="input" type="text" placeholder="Room Name..." style="min-width: 140px; padding: 6px 10px;" maxlength="32">
-              <button id="createRoomBtn" class="button" type="button" style="padding: 6px 12px;">Create</button>
-              <button id="joinRoomBtn" class="button" type="button" style="padding: 6px 12px;">Join</button>
+          <section id="chatWorkspace" class="portal-workspace">
+            <section id="gameChatsPanel" class="panel game-chats-panel">
+              <div class="panel-header portal-chat-header">
+                <div>
+                  <div class="panel-title">Game Chats</div>
+                  <div id="gameChatServerMeta" class="status-line">Chat server sync pending.</div>
+                </div>
+                <div class="portal-chat-meta">
+                  <span id="gameChatSyncLabel">GENERAL and CRIMES stay synced to the selected server.</span>
+                  <button id="chatSoundToggleBtn" type="button" class="button" style="padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--text); font-weight: bold; flex-shrink: 0;" onclick="toggleChatSound()">
+                    ğŸ”Š Sound: ON
+                  </button>
+                </div>
+              </div>
+              <div class="dual-chat-grid">
+                <section class="game-chat-card general">
+                  <div class="chat-column-header">
+                    <div class="chat-column-title">GENERAL</div>
+                    <div id="gameGeneralCaption" class="chat-column-caption">No server selected</div>
+                  </div>
+                  <div id="gameGeneralMessages" class="chat-messages compact">
+                    <div class="chat-empty">Loading general chat...</div>
+                  </div>
+                  <form id="gameGeneralForm" class="chat-form compact">
+                    <div class="chat-row">
+                      <textarea id="gameGeneralInput" class="input" maxlength="300" placeholder="Write to general chat..."></textarea>
+                    </div>
+                    <div class="chat-submit-row">
+                      <button class="button" type="submit">Send</button>
+                      <div id="gameGeneralFeedback" class="feedback"></div>
+                    </div>
+                  </form>
+                </section>
+
+                <section class="game-chat-card crimes">
+                  <div class="chat-column-header">
+                    <div class="chat-column-title">CRIMES</div>
+                    <div id="gameCrimesCaption" class="chat-column-caption">No server selected</div>
+                  </div>
+                  <div id="gameCrimesMessages" class="chat-messages compact">
+                    <div class="chat-empty">Loading crimes chat...</div>
+                  </div>
+                  <form id="gameCrimesForm" class="chat-form compact">
+                    <div class="chat-row">
+                      <textarea id="gameCrimesInput" class="input" maxlength="300" placeholder="Write to crimes chat..."></textarea>
+                    </div>
+                    <div class="chat-submit-row">
+                      <button class="button" type="submit">Send</button>
+                      <div id="gameCrimesFeedback" class="feedback"></div>
+                    </div>
+                  </form>
+                </section>
+              </div>
+            </section>
+
+            <aside id="chatPanel" class="panel private-chat-panel" style="position: relative;">
+          <div class="panel-header portal-chat-header" style="padding: 10px 14px; gap: 6px;">
+            <div style="flex: 1; min-width: 0; overflow: hidden;">
+              <div class="panel-title">Private Chat</div>
+              <div id="chatPanelTitle" class="status-line" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Room Name">Portal General</div>
+              <div id="chatMeta" class="status-line">No messages loaded.</div>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+              <button id="chatAdminToggleBtn" type="button" class="button" style="display: none; padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--yellow); font-weight: bold; flex-shrink: 0;" onclick="toggleChatAdmin()">
+                ğŸ›¡ï¸ Admin
+              </button>
             </div>
           </div>
-
-          <section id="obayPanel" class="panel">
-            <div class="panel-header">
-              <div>
-                <button id="obayToggleButton" class="toggle-button panel-title" type="button">Obay Auctions</button>
-                <div id="obayMeta" class="status-line">No Obay data loaded.</div>
+          <div class="private-panel-body">
+            <div class="private-room-sidebar">
+              <div class="private-room-sidebar-title">Portal Channels</div>
+              <div id="roomTabsContainer" class="room-tab-stack"></div>
+              <div class="private-room-actions">
+                <input id="newRoomInput" class="input" type="text" placeholder="Room Name..." maxlength="32">
+                <div class="private-room-action-row">
+                  <button id="createRoomBtn" class="button" type="button">Create</button>
+                  <button id="joinRoomBtn" class="button" type="button">Join</button>
+                </div>
               </div>
             </div>
-            <div id="obayPanelBody" class="obay-panel-body">
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th title="Name">Name</th>
-                      <th title="Seller">Seller</th>
-                      <th title="Minimum Bid">Minimum Bid</th>
-                      <th title="Bidder">Bidder</th>
-                      <th title="End">End</th>
-                    </tr>
-                  </thead>
-                  <tbody id="obayTableBody">
-                    <tr>
-                      <td colspan="5" class="muted">No Obay data yet. Open Obay auctions page with the extension enabled.</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <aside id="chatPanel" class="panel chat" style="position: relative;">
-          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; gap: 6px;">
-            <div style="flex: 1; min-width: 0; overflow: hidden;">
-              <div id="chatPanelTitle" class="panel-title" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Room Name">Room</div>
-              <div id="chatMeta" class="status-line" style="display: none;">No messages loaded.</div>
-            </div>
-            <!-- Targets & Notes header buttons - only visible in private rooms -->
-            <div id="notesPanelHeaderButtons" style="display: none; gap: 4px; align-items: center; flex-shrink: 0;">
+            <div id="privateChatMain" class="private-chat-main">
+              <div class="private-chat-stage">
+                <div class="private-panel-topline">
+                  <div class="status-line">Portal room controls</div>
+                  <div id="notesPanelHeaderButtons" style="display: none; gap: 4px; align-items: center; flex-shrink: 0;">
               <button id="headerTargetsBtn" type="button" class="button" style="padding: 3px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: bold; white-space: nowrap;" onclick="toggleHeaderTab('targets')">
                 🎯 Targets (<span id="targetsCount">0</span>)
               </button>
@@ -1659,10 +1922,141 @@ function renderDashboardHtml() {
             </div>
           </form>
         </aside>
+          </section>
+
+          <section id="obayPanel" class="panel">
+            <div class="panel-header">
+              <div>
+                <button id="obayToggleButton" class="toggle-button panel-title" type="button">Obay Auctions</button>
+                <div id="obayMeta" class="status-line">No Obay data loaded.</div>
+              </div>
+            </div>
+            <div id="obayPanelBody" class="obay-panel-body">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th title="Name">Name</th>
+                      <th title="Seller">Seller</th>
+                      <th title="Minimum Bid">Minimum Bid</th>
+                      <th title="Bidder">Bidder</th>
+                      <th title="End">End</th>
+                    </tr>
+                  </thead>
+                  <tbody id="obayTableBody">
+                    <tr>
+                      <td colspan="5" class="muted">No Obay data yet. Open Obay auctions page with the extension enabled.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
-    </div>
 
     <script>
+      const chatPanelRoot = document.getElementById("chatPanel");
+      if (chatPanelRoot) {
+        chatPanelRoot.innerHTML = \`
+          <div class="panel-header portal-chat-header">
+            <div style="flex: 1; min-width: 0; overflow: hidden;">
+              <div class="panel-title">Private Chat</div>
+              <div id="chatPanelTitle" class="status-line" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Room Name">Portal General</div>
+              <div id="chatMeta" class="status-line">No messages loaded.</div>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+              <button id="chatAdminToggleBtn" type="button" class="button" style="display: none; padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--yellow); font-weight: bold; flex-shrink: 0;" onclick="toggleChatAdmin()">Admin</button>
+            </div>
+          </div>
+          <div class="private-panel-body">
+            <div class="private-room-sidebar">
+              <div class="private-room-sidebar-title">Portal Channels</div>
+              <div id="roomTabsContainer" class="room-tab-stack"></div>
+              <div class="private-room-actions">
+                <input id="newRoomInput" class="input" type="text" placeholder="Room Name..." maxlength="32">
+                <div class="private-room-action-row">
+                  <button id="createRoomBtn" class="button" type="button">Create</button>
+                  <button id="joinRoomBtn" class="button" type="button">Join</button>
+                </div>
+              </div>
+            </div>
+            <div id="privateChatMain" class="private-chat-main">
+              <div class="private-chat-stage">
+                <div class="private-panel-topline">
+                  <div class="status-line">Portal room controls</div>
+                  <div id="notesPanelHeaderButtons" style="display: none; gap: 4px; align-items: center; flex-shrink: 0;">
+                    <button id="headerTargetsBtn" type="button" class="button" style="padding: 3px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: bold; white-space: nowrap;" onclick="toggleHeaderTab('targets')">Targets (<span id="targetsCount">0</span>)</button>
+                    <button id="headerNotesBtn" type="button" class="button" style="padding: 3px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: bold; white-space: nowrap;" onclick="toggleHeaderTab('notes')">Notes (<span id="notesCount">0</span>)</button>
+                  </div>
+                </div>
+                <div id="notesPanel" class="chat-notes-panel" style="display: none; border-bottom: 1px solid var(--border); background: var(--panel-2);">
+                  <div id="notesPanelBody" style="padding: 10px 12px 12px 12px; background: rgba(0,0,0,0.15);">
+                    <div id="tabTargetsView">
+                      <form id="addTargetForm" style="display: flex; gap: 6px; margin-bottom: 8px;" onsubmit="handleNewTarget(event)">
+                        <input id="targetNameInput" class="input" type="text" placeholder="Target name..." style="flex: 1; min-width: 0; padding: 4px 8px; font-size: 11px; height: 26px;" autocomplete="off" required>
+                        <button type="submit" class="button" style="padding: 0 10px; font-size: 11px; font-weight: bold; height: 26px;">Add</button>
+                      </form>
+                      <div id="targetsListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; max-height: 140px; overflow-y: auto; padding-right: 2px;">
+                        <span class="muted" style="font-size: 10px;">No targets added yet.</span>
+                      </div>
+                    </div>
+                    <div id="tabNotesView" style="display: none;">
+                      <form id="addNoteForm" style="display: flex; gap: 6px; margin-bottom: 8px;" onsubmit="handleNewNote(event)">
+                        <input id="noteTextInput" class="input" type="text" placeholder="Note text (safehouse coords, planning)..." style="flex: 1; min-width: 0; padding: 4px 8px; font-size: 11px; height: 26px;" autocomplete="off" required>
+                        <button type="submit" class="button" style="padding: 0 10px; font-size: 11px; font-weight: bold; height: 26px;">Add</button>
+                      </form>
+                      <div id="notesListContainer" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto; padding-right: 2px;">
+                        <span class="muted" style="font-size: 10px;">No notes added yet.</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="chatAdminPanel" style="display: none; position: absolute; top: 52px; left: 194px; right: 12px; background: #171d27; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7); z-index: 100; padding: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 6px;">
+                    <span style="font-size: 11px; font-weight: bold; color: var(--yellow);">Room Administration</span>
+                    <button type="button" style="font-size: 14px; color: var(--muted); border: none; background: transparent; cursor: pointer; line-height: 1; padding: 0 4px;" onclick="toggleChatAdmin()">x</button>
+                  </div>
+                  <div id="chatAdminContent" style="display: grid; grid-template-columns: 1fr 1.1fr; gap: 8px; font-size: 10px;">
+                    <div>
+                      <div style="font-weight: bold; color: var(--yellow); margin-bottom: 4px;">Pending:</div>
+                      <div id="compactPendingList" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
+                    </div>
+                    <div>
+                      <div style="font-weight: bold; color: var(--accent); margin-bottom: 4px;">Members:</div>
+                      <div id="compactMembersList" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
+                    </div>
+                  </div>
+                </div>
+                <div id="chatPinnedContainer" style="display:none; border-bottom:1px solid var(--border); background:rgba(90,169,255,.08);"></div>
+                <div id="privateChatEmptyState" class="private-chat-empty-state">Portal General controls the player table. Select TestRoom or a private room to use portal chat.</div>
+                <div id="chatMessages" class="chat-messages">
+                  <div class="chat-empty">Select a room to load chat.</div>
+                </div>
+                <form id="chatForm" class="chat-form">
+                  <div class="chat-shortcuts">
+                    <button class="chat-shortcut" type="button" data-template="Heist">Heist</button>
+                    <button class="chat-shortcut" type="button" data-template="OC">OC</button>
+                    <button class="chat-shortcut" type="button" data-template="MOC">MOC</button>
+                    <button class="chat-shortcut" type="button" data-template="Race">Race</button>
+                  </div>
+                  <div class="chat-row" style="position: relative; display: flex; gap: 6px;">
+                    <textarea id="messageInput" class="input" maxlength="300" placeholder="Write a room message..." style="flex: 1;"></textarea>
+                    <button id="emojiButton" class="button" type="button" style="padding: 0 10px; font-size: 16px; background: var(--panel-2); border-color: var(--border);" title="Insert Emoji">+</button>
+                    <div id="emojiPanel" style="display: none; position: absolute; bottom: 100%; right: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; width: 220px; grid-template-columns: repeat(6, 1fr); gap: 4px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+                      <span class="emoji-item">😀</span><span class="emoji-item">😁</span><span class="emoji-item">😂</span><span class="emoji-item">🤣</span><span class="emoji-item">😎</span><span class="emoji-item">😍</span><span class="emoji-item">😘</span><span class="emoji-item">😡</span><span class="emoji-item">😭</span><span class="emoji-item">👍</span><span class="emoji-item">👎</span><span class="emoji-item">✅</span><span class="emoji-item">❌</span><span class="emoji-item">🔥</span><span class="emoji-item">💀</span><span class="emoji-item">🎯</span><span class="emoji-item">🚀</span><span class="emoji-item">💰</span><span class="emoji-item">🔫</span><span class="emoji-item">🛡️</span><span class="emoji-item">🍺</span><span class="emoji-item">💊</span>
+                    </div>
+                  </div>
+                  <div class="chat-row">
+                    <button class="button" type="submit">Send Message</button>
+                    <div id="chatFeedback" class="feedback"></div>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>\`;
+      }
+
       const roomInput = document.getElementById("roomInput");
       const applyRoomButton = document.getElementById("applyRoomButton");
       const roomTitle = document.getElementById("roomTitle");
@@ -1686,6 +2080,18 @@ function renderDashboardHtml() {
       const messageInput = document.getElementById("messageInput");
       const chatFeedback = document.getElementById("chatFeedback");
       const chatPanelTitle = document.getElementById("chatPanelTitle");
+      const privateChatMain = document.getElementById("privateChatMain");
+      const gameChatServerMeta = document.getElementById("gameChatServerMeta");
+      const gameGeneralCaption = document.getElementById("gameGeneralCaption");
+      const gameCrimesCaption = document.getElementById("gameCrimesCaption");
+      const gameGeneralMessages = document.getElementById("gameGeneralMessages");
+      const gameCrimesMessages = document.getElementById("gameCrimesMessages");
+      const gameGeneralForm = document.getElementById("gameGeneralForm");
+      const gameCrimesForm = document.getElementById("gameCrimesForm");
+      const gameGeneralInput = document.getElementById("gameGeneralInput");
+      const gameCrimesInput = document.getElementById("gameCrimesInput");
+      const gameGeneralFeedback = document.getElementById("gameGeneralFeedback");
+      const gameCrimesFeedback = document.getElementById("gameCrimesFeedback");
       const dashboardNicknames = { tr: "-", com: "-", nl: "-", pt: "-" };
 
       const FIXED_ROOM = "General";
@@ -1760,6 +2166,7 @@ function renderDashboardHtml() {
       let userRoomStatus = "none";
       let isChatAdminOpen = false;
       let lastChatMsgTime = 0;
+      let gameChatLastSeen = { general: 0, crimes: 0 };
       let isChatSoundEnabled = true;
       try {
         const stored = localStorage.getItem("omerta_chat_sound_enabled");
@@ -1855,6 +2262,20 @@ function renderDashboardHtml() {
           return room;
         }
         return "General (" + getActiveChatServerId().toUpperCase() + ")";
+      }
+
+      function getGameChatRoomKey(kind) {
+        const suffix = getActiveChatServerId().toUpperCase();
+        return (kind === "crimes" ? "Crimes_" : "General_") + suffix;
+      }
+
+      function getGameChatRoomLabel(kind) {
+        return (kind === "crimes" ? "CRIMES" : "GENERAL") + " (" + getActiveChatServerId().toUpperCase() + ")";
+      }
+
+      function setPrivateChatIdleState(isIdle) {
+        if (!privateChatMain) return;
+        privateChatMain.classList.toggle("is-idle", !!isIdle);
       }
 
       function escapeHtml(value) {
@@ -2621,6 +3042,50 @@ function renderDashboardHtml() {
         }
       }
 
+      function renderGameChat(kind, messages) {
+        const container = kind === "crimes" ? gameCrimesMessages : gameGeneralMessages;
+        const caption = kind === "crimes" ? gameCrimesCaption : gameGeneralCaption;
+        if (!container || !caption) return;
+
+        const trackerKey = kind === "crimes" ? "crimes" : "general";
+        const currentSender = getChatSender();
+        let hasNewMessage = false;
+        if (messages && messages.length > 0) {
+          const lastMsg = messages[messages.length - 1];
+          const lastTime = Number(lastMsg.createdAt) || 0;
+          if (gameChatLastSeen[trackerKey] > 0 && lastTime > gameChatLastSeen[trackerKey] && lastMsg.player !== currentSender) {
+            hasNewMessage = true;
+          }
+          gameChatLastSeen[trackerKey] = lastTime;
+        }
+
+        caption.textContent = getGameChatRoomLabel(kind);
+        container.innerHTML = (messages || []).map((message) => {
+          const timeStr = formatClock(Number(message.createdAt));
+          const isOwn = message.player === currentSender;
+          let playerServerId = activeServerFilter;
+          if (latestState && Array.isArray(latestState.players)) {
+            const stateEntry = latestState.players.find((p) => p.player === message.player);
+            if (stateEntry && stateEntry.serverId) {
+              playerServerId = stateEntry.serverId;
+            }
+          }
+          const playerProfileUrl = getPlayerProfileBaseUrl(playerServerId) + encodeURIComponent(message.player || "");
+          return '<div class="chat-item ' + (isOwn ? "own" : "other") + '">' +
+            '<div class="chat-content">' +
+            '<a class="chat-player" href="' + escapeHtml(playerProfileUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(message.player || "-") + ":</a>" +
+            '<span class="chat-text">' + renderChatMessageText(String(message.message || "")) + "</span>" +
+            "</div>" +
+            '<div class="chat-meta-row"><span class="chat-time">' + escapeHtml(timeStr) + "</span></div>" +
+            "</div>";
+        }).join("") || '<div class="chat-empty">No messages yet.</div>';
+
+        container.scrollTop = container.scrollHeight;
+        if (hasNewMessage && isChatSoundEnabled && (document.hidden || !document.hasFocus())) {
+          playNotificationSound();
+        }
+      }
+
       async function loadObay() {
         if (!currentRoom || !isValidRoom(currentRoom)) {
           obayTableBody.innerHTML = '<tr><td colspan="5" class="muted">No Obay data yet. Open Obay auctions page with the extension enabled.</td></tr>';
@@ -2682,11 +3147,13 @@ function renderDashboardHtml() {
 
           if (userRoomStatus === "owner" || userRoomStatus === "member") {
             layoutEl.style.display = "grid";
-            layoutEl.style.gridTemplateColumns = "minmax(0, 2.8fr) minmax(360px, 1.15fr)";
+            layoutEl.style.gridTemplateColumns = "1fr";
             unauthorizedEl.style.display = "none";
             cooldownsPanel.style.display = "block";
             obayPanel.style.display = "block";
             chatPanel.style.display = "flex";
+            const gameChatsPanel = document.getElementById("gameChatsPanel");
+            if (gameChatsPanel) gameChatsPanel.style.display = "flex";
 
             const notesPanel = document.getElementById('notesPanel');
             const notesPanelHeaderBtns = document.getElementById('notesPanelHeaderButtons');
@@ -2781,18 +3248,41 @@ function renderDashboardHtml() {
               shouldAutoSelectServer = false;
             }
 
-            const chatRoomKey = getChatRoomKey(currentRoom);
-            const chatRoomLabel = getChatRoomLabel(currentRoom);
-            const chatResponse = await fetch("/api/chat?room=" + encodeURIComponent(chatRoomKey) + "&clientId=" + encodeURIComponent(myClientId));
-            const chatData = await chatResponse.json();
-
-            if (!chatResponse.ok) {
-              throw new Error(chatData.error || "Chat request failed");
+            renderPlayers(stateData);
+            if (gameChatServerMeta) {
+              gameChatServerMeta.textContent = "Chat Server: " + getActiveChatServerId().toUpperCase() + " (Sync)";
             }
 
-            renderPlayers(stateData);
-            chatPanelTitle.textContent = chatRoomLabel;
-            renderChat(chatRoomLabel, chatData.messages);
+            const generalChatResponse = await fetch("/api/chat?room=" + encodeURIComponent(getGameChatRoomKey("general")) + "&clientId=" + encodeURIComponent(myClientId));
+            const generalChatData = await generalChatResponse.json();
+            if (!generalChatResponse.ok) {
+              throw new Error(generalChatData.error || "General chat request failed");
+            }
+            renderGameChat("general", generalChatData.messages || []);
+
+            const crimesChatResponse = await fetch("/api/chat?room=" + encodeURIComponent(getGameChatRoomKey("crimes")) + "&clientId=" + encodeURIComponent(myClientId));
+            const crimesChatData = await crimesChatResponse.json();
+            if (!crimesChatResponse.ok) {
+              throw new Error(crimesChatData.error || "Crimes chat request failed");
+            }
+            renderGameChat("crimes", crimesChatData.messages || []);
+
+            chatPanelTitle.textContent = isGeneralRoom(currentRoom) ? "Portal General" : currentRoom;
+            if (isGeneralRoom(currentRoom)) {
+              chatMeta.textContent = "Portal General controls the player table only.";
+              chatMessages.innerHTML = '<div class="chat-empty">Portal General has no private chat panel.</div>';
+              setPrivateChatIdleState(true);
+            } else {
+              const chatRoomKey = getChatRoomKey(currentRoom);
+              const chatRoomLabel = getChatRoomLabel(currentRoom);
+              const chatResponse = await fetch("/api/chat?room=" + encodeURIComponent(chatRoomKey) + "&clientId=" + encodeURIComponent(myClientId));
+              const chatData = await chatResponse.json();
+              if (!chatResponse.ok) {
+                throw new Error(chatData.error || "Chat request failed");
+              }
+              setPrivateChatIdleState(false);
+              renderChat(chatRoomLabel, chatData.messages);
+            }
           } else {
             layoutEl.style.display = "grid";
             layoutEl.style.gridTemplateColumns = "1fr";
@@ -2800,6 +3290,8 @@ function renderDashboardHtml() {
             cooldownsPanel.style.display = "none";
             obayPanel.style.display = "none";
             chatPanel.style.display = "none";
+            const gameChatsPanel = document.getElementById("gameChatsPanel");
+            if (gameChatsPanel) gameChatsPanel.style.display = "none";
             chatAdminPanel.style.display = "none";
             document.getElementById("chatAdminToggleBtn").style.display = "none";
 
@@ -2842,7 +3334,7 @@ function renderDashboardHtml() {
         } catch (error) {
           latestState = null;
           roomTitle.textContent = currentRoom || FIXED_ROOM;
-          chatPanelTitle.textContent = getChatRoomLabel(currentRoom || FIXED_ROOM);
+          chatPanelTitle.textContent = isGeneralRoom(currentRoom || FIXED_ROOM) ? "Portal General" : getChatRoomLabel(currentRoom || FIXED_ROOM);
           stateMeta.textContent = "Failed to load room data.";
           cooldownTableBody.innerHTML = '<tr><td colspan="20" class="muted">Could not load state.</td></tr>';
           chatMessages.innerHTML = '<div class="chat-empty">Could not load chat.</div>';
@@ -3007,6 +3499,7 @@ function renderDashboardHtml() {
         setRoomInUrl(currentRoom);
         shouldAutoSelectServer = true;
         lastChatMsgTime = 0;
+        updateChatFormState();
         startPolling();
       }
 
@@ -3204,8 +3697,64 @@ function renderDashboardHtml() {
           chatFeedback.className = "feedback error";
           chatFeedback.textContent = error.message || "Message send failed";
         }
-      });      function getChatSender() {
+      });
+
+      if (gameGeneralForm) {
+        gameGeneralForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          await sendGameChatMessage("general", gameGeneralInput, gameGeneralFeedback);
+        });
+      }
+
+      if (gameCrimesForm) {
+        gameCrimesForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          await sendGameChatMessage("crimes", gameCrimesInput, gameCrimesFeedback);
+        });
+      }
+
+      function getChatSender() {
         return myPlayerName || "";
+      }
+
+      async function sendGameChatMessage(kind, inputEl, feedbackEl) {
+        if (!inputEl || !feedbackEl) return;
+        feedbackEl.className = "feedback";
+        feedbackEl.textContent = "";
+        let message = inputEl.value.trim();
+        message = message.replace(/\s*\(\)/g, "").trim();
+        if (!isConnected || !myPlayerName) {
+          feedbackEl.className = "feedback error";
+          feedbackEl.textContent = "Open Omerta and wait for extension to connect.";
+          return;
+        }
+        if (!message) {
+          feedbackEl.className = "feedback error";
+          feedbackEl.textContent = "Message cannot be empty.";
+          return;
+        }
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              room: getGameChatRoomKey(kind),
+              player: myPlayerName,
+              clientId: myClientId,
+              message
+            })
+          });
+          const resData = await response.json().catch(() => ({ ok: false, error: "Invalid response" }));
+          if (!response.ok || !resData.ok) {
+            throw new Error(resData.error || "Message send failed");
+          }
+          inputEl.value = "";
+          feedbackEl.textContent = "";
+          loadStateAndChat();
+        } catch (error) {
+          feedbackEl.className = "feedback error";
+          feedbackEl.textContent = error.message || "Message send failed";
+        }
       }
 
       function getChatTemplateText(serverId, label) {
@@ -3291,7 +3840,10 @@ function renderDashboardHtml() {
         const sendBtn = chatForm.querySelector("button[type='submit']");
         const emojiBtn = document.getElementById("emojiButton");
         const shortcutButtons = document.querySelectorAll(".chat-shortcut");
-        if (isConnected && myPlayerName) {
+        const gameGeneralSendBtn = gameGeneralForm ? gameGeneralForm.querySelector("button[type='submit']") : null;
+        const gameCrimesSendBtn = gameCrimesForm ? gameCrimesForm.querySelector("button[type='submit']") : null;
+        const canUsePrivateChat = isConnected && myPlayerName && !isGeneralRoom(currentRoom);
+        if (canUsePrivateChat) {
           messageInput.disabled = false;
           if (sendBtn) sendBtn.disabled = false;
           if (emojiBtn) emojiBtn.disabled = false;
@@ -3304,8 +3856,16 @@ function renderDashboardHtml() {
           if (emojiBtn) emojiBtn.disabled = true;
           shortcutButtons.forEach((button) => { button.disabled = true; });
           chatFeedback.className = "feedback error";
-          chatFeedback.textContent = "Open Omerta and wait for extension to connect.";
+          chatFeedback.textContent = isGeneralRoom(currentRoom) ? "Portal General has no private chat." : "Open Omerta and wait for extension to connect.";
         }
+
+        const canUseGameChat = isConnected && myPlayerName;
+        if (gameGeneralInput) gameGeneralInput.disabled = !canUseGameChat;
+        if (gameCrimesInput) gameCrimesInput.disabled = !canUseGameChat;
+        if (gameGeneralSendBtn) gameGeneralSendBtn.disabled = !canUseGameChat;
+        if (gameCrimesSendBtn) gameCrimesSendBtn.disabled = !canUseGameChat;
+        if (gameGeneralFeedback && !canUseGameChat) gameGeneralFeedback.textContent = "Connect to chat.";
+        if (gameCrimesFeedback && !canUseGameChat) gameCrimesFeedback.textContent = "Connect to chat.";
       }
 
       // Handshake and postMessage coordination with extension
