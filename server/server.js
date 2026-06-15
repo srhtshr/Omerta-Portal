@@ -1087,6 +1087,17 @@ function renderDashboardHtml() {
         gap: 8px;
       }
 
+      .chat-form .chat-row:last-child {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .chat-form .chat-row:last-child .feedback {
+        margin-right: auto;
+      }
+
       textarea.input {
         min-height: 50px;
         resize: vertical;
@@ -1432,6 +1443,7 @@ function renderDashboardHtml() {
         display: flex;
         align-items: center;
         gap: 8px;
+        justify-content: flex-end;
       }
 
       .chat-submit-row .button[type="submit"] {
@@ -1450,52 +1462,56 @@ function renderDashboardHtml() {
       }
 
       .private-panel-body {
-        display: grid;
-        grid-template-columns: 170px minmax(0, 1fr);
-        gap: 12px;
+        display: block;
         padding: 0 12px 12px;
         min-height: 0;
         flex: 1;
       }
 
-      .private-room-sidebar {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        min-height: 0;
-      }
-
-      .private-room-sidebar-title {
-        color: #ae7cff;
-        font-size: 12px;
-        font-weight: 800;
-        padding: 2px 2px 0;
-      }
-
+      .private-room-sidebar,
       .room-tab-stack {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        min-height: 0;
+        display: none;
       }
 
-      .room-tab {
+      .private-room-toolbar {
+        display: flex;
+        align-items: center;
         justify-content: space-between;
-        width: 100%;
+        gap: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+
+      .private-room-select-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 220px;
+      }
+
+      .private-room-select {
+        flex: 1;
+        min-width: 0;
+        height: 38px;
+        padding: 0 12px;
         border-radius: 10px;
-        padding: 10px 12px;
-        background: rgba(255, 255, 255, 0.025);
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.03);
+        color: var(--text);
       }
 
       .private-room-actions {
-        display: grid;
+        display: flex;
         gap: 8px;
-        margin-top: auto;
+        align-items: center;
+        flex-wrap: wrap;
       }
 
       .private-room-action-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+        display: flex;
         gap: 8px;
       }
 
@@ -1756,8 +1772,8 @@ function renderDashboardHtml() {
                       <textarea id="gameGeneralInput" class="input" maxlength="300" placeholder="Write to general chat..."></textarea>
                     </div>
                     <div class="chat-submit-row">
-                      <button class="button" type="submit">Send</button>
                       <div id="gameGeneralFeedback" class="feedback"></div>
+                      <button class="button" type="submit">Send</button>
                     </div>
                   </form>
                 </section>
@@ -1775,8 +1791,8 @@ function renderDashboardHtml() {
                       <textarea id="gameCrimesInput" class="input" maxlength="300" placeholder="Write to crimes chat..."></textarea>
                     </div>
                     <div class="chat-submit-row">
-                      <button class="button" type="submit">Send</button>
                       <div id="gameCrimesFeedback" class="feedback"></div>
+                      <button class="button" type="submit">Send</button>
                     </div>
                   </form>
                 </section>
@@ -1970,9 +1986,10 @@ function renderDashboardHtml() {
             </div>
           </div>
           <div class="private-panel-body">
-            <div class="private-room-sidebar">
-              <div class="private-room-sidebar-title">Portal Channels</div>
-              <div id="roomTabsContainer" class="room-tab-stack"></div>
+            <div class="private-room-toolbar">
+              <div class="private-room-select-wrap">
+                <select id="roomTabsContainer" class="private-room-select"></select>
+              </div>
               <div class="private-room-actions">
                 <input id="newRoomInput" class="input" type="text" placeholder="Room Name..." maxlength="32">
                 <div class="private-room-action-row">
@@ -2048,8 +2065,8 @@ function renderDashboardHtml() {
                     </div>
                   </div>
                   <div class="chat-row">
-                    <button class="button" type="submit">Send Message</button>
                     <div id="chatFeedback" class="feedback"></div>
+                    <button class="button" type="submit">Send Message</button>
                   </div>
                 </form>
               </div>
@@ -4295,6 +4312,15 @@ function renderDashboardHtml() {
       });
 
       renderRoomTabs();
+      const roomTabsSelect = document.getElementById("roomTabsContainer");
+      if (roomTabsSelect) {
+        roomTabsSelect.addEventListener("change", (event) => {
+          const nextRoom = String(event.target.value || "").trim();
+          if (nextRoom) {
+            selectRoom(nextRoom);
+          }
+        });
+      }
       applyRoom(activeRoom);
     </script>
   </body>
