@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Omerta Portal",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Shares Omerta family cooldowns and room chat through a shared dashboard.",
   "icons": {
     "16": "icon16.png",
@@ -13,6 +13,8 @@
     "tabs"
   ],
   "host_permissions": [
+    "https://omertaportal.com/*",
+    "https://*.omertaportal.com/*",
     "https://barafranca.nl/*",
     "https://*.barafranca.nl/*",
     "https://barafranca.pt/*",
@@ -35,7 +37,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Omerta Portal v1.0",
+    "default_title": "Omerta Portal v2.0",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icon16.png",
@@ -46,6 +48,8 @@
   "content_scripts": [
     {
       "matches": [
+        "https://omertaportal.com/*",
+        "https://*.omertaportal.com/*",
         "https://barafranca.nl/*",
         "https://*.barafranca.nl/*",
         "https://barafranca.pt/*",

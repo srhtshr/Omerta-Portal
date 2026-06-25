@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = "http://localhost:3000";
+const DEFAULT_API_URL = "https://omerta-portal.onrender.com";
 
 async function getOrCreateClientId() {
   let stored = await chrome.storage.local.get("CLIENT_ID");
@@ -131,7 +131,9 @@ async function applySimplifiedDefaults() {
     "manualAlias"
   ]);
   const currentRoom = existing.ROOM || existing.room || existing.ACTIVE_ROOM || existing.activeRoom || STORED_ROOM_NAME;
-  const currentApiUrl = existing.API_URL || existing.apiUrl || DEFAULT_SETTINGS.API_URL;
+  const storedUrl = existing.API_URL || existing.apiUrl || "";
+  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(storedUrl);
+  const currentApiUrl = (!storedUrl || isLocalhost) ? DEFAULT_SETTINGS.API_URL : storedUrl;
   const payload = {
     ENABLED: typeof existing.ENABLED === "boolean" ? existing.ENABLED : true,
     API_URL: currentApiUrl,
