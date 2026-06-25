@@ -132,8 +132,8 @@ async function applySimplifiedDefaults() {
   ]);
   const currentRoom = existing.ROOM || existing.room || existing.ACTIVE_ROOM || existing.activeRoom || STORED_ROOM_NAME;
   const storedUrl = existing.API_URL || existing.apiUrl || "";
-  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(storedUrl);
-  const currentApiUrl = (!storedUrl || isLocalhost) ? DEFAULT_SETTINGS.API_URL : storedUrl;
+  const isDevUrl = !storedUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(storedUrl) || storedUrl.includes("onrender.com");
+  const currentApiUrl = isDevUrl ? DEFAULT_SETTINGS.API_URL : storedUrl;
   const payload = {
     ENABLED: typeof existing.ENABLED === "boolean" ? existing.ENABLED : true,
     API_URL: currentApiUrl,
@@ -224,9 +224,8 @@ sendNowButton.addEventListener("click", () => {
 
 openDashboardButton.addEventListener("click", async () => {
   setFeedback(settingsFeedback, "", "");
-  const settings = await getSettings();
-  const apiUrl = normalizeApiUrl(readSettingValue(settings, "API_URL", "apiUrl", DEFAULT_SETTINGS.apiUrl));
-  const targetUrl = apiUrl.replace(/\/+$/, "") + "/";
+  const migrated = await applySimplifiedDefaults();
+  const targetUrl = migrated.API_URL.replace(/\/+$/, "") + "/";
   chrome.tabs.create({ url: targetUrl });
 });
 
