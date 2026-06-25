@@ -28,7 +28,7 @@
     "https://barafranca.com/*",
     "https://*.barafranca.com/*",
     "https://omerta.dm/*",
-    "https://*.omerta.dm/*",
+    "https://*.omerta.dm/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -60,7 +60,7 @@
         "https://barafranca.com/*",
         "https://*.barafranca.com/*",
         "https://omerta.dm/*",
-        "https://*.omerta.dm/*",
+        "https://*.omerta.dm/*"
       ],
       "js": [
         "content.js"
