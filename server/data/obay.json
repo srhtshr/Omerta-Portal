@@ -1,112 +1,8 @@
 {
   "com": {
-    "updatedAt": 1782354760,
+    "updatedAt": 1782355946,
     "updatedBy": "Tinerci",
     "items": [
-      {
-        "name": "Bodyguard: Joe (A10 | G | V)",
-        "seller": "Farzin",
-        "minimumBid": "$44,444,444",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782354704"
-      },
-      {
-        "name": "Bodyguard: Lee (D10 | V)",
-        "seller": "Farzin",
-        "minimumBid": "$44,444,444",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782354714"
-      },
-      {
-        "name": "Bodyguard: Ray (D10 | G | V)",
-        "seller": "Farzin",
-        "minimumBid": "$44,444,444",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782354724"
-      },
-      {
-        "name": "Pack of bullets (3000)",
-        "seller": "Byromantic",
-        "minimumBid": "$2,799,999",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782355053"
-      },
-      {
-        "name": "Bodyguard: Ray (D10 | G | V)",
-        "seller": "Alir",
-        "minimumBid": "$44,444,444",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782355391"
-      },
-      {
-        "name": "Pack of bullets (3000)",
-        "seller": "Ramcel",
-        "minimumBid": "$2,100,000",
-        "buyItNow": "-",
-        "bidder": "Yes",
-        "endTime": "1782355394"
-      },
-      {
-        "name": "Bodyguard: Ray (D10 | G | V)",
-        "seller": "Bayeern",
-        "minimumBid": "$40,000,000",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782355422"
-      },
-      {
-        "name": "Bodyguard: Lee (D10 | V)",
-        "seller": "Bayeern",
-        "minimumBid": "$40,000,000",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782355432"
-      },
-      {
-        "name": "Bodyguard: Ike (D10 | G | V)",
-        "seller": "Bayeern",
-        "minimumBid": "$40,000,000",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782355442"
-      },
-      {
-        "name": "Bodyguard: Joe (D10 | G | V)",
-        "seller": "Duhhhh",
-        "minimumBid": "$9,926,838",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782355823"
-      },
-      {
-        "name": "Pack of bullets (3000)",
-        "seller": "Lassa",
-        "minimumBid": "$2,572,500",
-        "buyItNow": "-",
-        "bidder": "Yes",
-        "endTime": "1782355832"
-      },
-      {
-        "name": "Bodyguard: Ray (D10 | G | V)",
-        "seller": "Duhhhh",
-        "minimumBid": "$9,926,838",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782355833"
-      },
-      {
-        "name": "Bodyguard: Ike (D10 | G | V)",
-        "seller": "Duhhhh",
-        "minimumBid": "$9,926,838",
-        "buyItNow": "-",
-        "bidder": "-",
-        "endTime": "1782355843"
-      },
       {
         "name": "Bodyguard: Lex (A10 | G | V)",
         "seller": "Anonymous",
@@ -149,11 +45,35 @@
       },
       {
         "name": "Pack of bullets (3000)",
+        "seller": "Tokai",
+        "minimumBid": "$2,450,000",
+        "buyItNow": "-",
+        "bidder": "-",
+        "endTime": "1782356574"
+      },
+      {
+        "name": "Pack of bullets (3000)",
+        "seller": "Byromantic",
+        "minimumBid": "$2,799,999",
+        "buyItNow": "-",
+        "bidder": "-",
+        "endTime": "1782356967"
+      },
+      {
+        "name": "Pack of bullets (3000)",
         "seller": "Mtmt",
         "minimumBid": "$2,325,222",
         "buyItNow": "-",
         "bidder": "Yes",
         "endTime": "1782357215"
+      },
+      {
+        "name": "Pack of bullets (3000)",
+        "seller": "Ramcel",
+        "minimumBid": "$2,000,000",
+        "buyItNow": "-",
+        "bidder": "-",
+        "endTime": "1782357518"
       },
       {
         "name": "Pack of bullets (3000)",
@@ -186,6 +106,30 @@
         "buyItNow": "$29,359,756",
         "bidder": "-",
         "endTime": "1782357700"
+      },
+      {
+        "name": "Bodyguard: Joe (A10 | G | V)",
+        "seller": "Farzin",
+        "minimumBid": "$44,444,444",
+        "buyItNow": "-",
+        "bidder": "-",
+        "endTime": "1782357727"
+      },
+      {
+        "name": "Bodyguard: Lee (D10 | V)",
+        "seller": "Farzin",
+        "minimumBid": "$44,444,444",
+        "buyItNow": "-",
+        "bidder": "-",
+        "endTime": "1782357737"
+      },
+      {
+        "name": "Bodyguard: Ray (D10 | G | V)",
+        "seller": "Farzin",
+        "minimumBid": "$44,444,444",
+        "buyItNow": "-",
+        "bidder": "-",
+        "endTime": "1782357747"
       },
       {
         "name": "Pack of bullets (3000)",

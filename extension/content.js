@@ -1,10 +1,11 @@
 const DASHBOARD_HOSTS = [
   "localhost:3000",
   "127.0.0.1:3000",
-  "omerta-portal.onrender.com"
+  "omerta-portal.onrender.com",
+  "omertaportal.com"
 ];
 
-const DEFAULT_API_URL = "http://localhost:3000";
+const DEFAULT_API_URL = "https://omerta-portal.onrender.com";
 
 const isDashboard = DASHBOARD_HOSTS.some(host =>
   window.location.origin.includes(host)
@@ -148,19 +149,19 @@ async function getOrCreateClientId() {
   let synced = await chrome.storage.sync.get("CLIENT_ID").catch(() => ({}));
   if (synced.CLIENT_ID) {
     // Backfill local so other code reading local also finds it
-    await chrome.storage.local.set({ CLIENT_ID: synced.CLIENT_ID }).catch(() => {});
+    await chrome.storage.local.set({ CLIENT_ID: synced.CLIENT_ID }).catch(() => { });
     return synced.CLIENT_ID;
   }
   // Fall back to local (migrate existing local ID to sync)
   let local = await chrome.storage.local.get("CLIENT_ID");
   if (local.CLIENT_ID) {
-    await chrome.storage.sync.set({ CLIENT_ID: local.CLIENT_ID }).catch(() => {});
+    await chrome.storage.sync.set({ CLIENT_ID: local.CLIENT_ID }).catch(() => { });
     return local.CLIENT_ID;
   }
   // Create new ID, store in both
   const newId = "client_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-  await chrome.storage.sync.set({ CLIENT_ID: newId }).catch(() => {});
-  await chrome.storage.local.set({ CLIENT_ID: newId }).catch(() => {});
+  await chrome.storage.sync.set({ CLIENT_ID: newId }).catch(() => { });
+  await chrome.storage.local.set({ CLIENT_ID: newId }).catch(() => { });
   return newId;
 }
 
@@ -1022,12 +1023,12 @@ function parseCharacterProgressionFromDocument(doc) {
     if (cells.length >= 2 && (labelText.toLowerCase().includes("plating") || labelText.toLowerCase().includes("plaka"))) {
       const valCell = cells[1];
       platingPercent = extractProgressPercentFromCell(valCell);
-      
+
       const labelMatch = labelText.match(/(?:plating|plaka)\s*\(([^)]+)\)/i);
       if (labelMatch) {
         platingLabel = trimToString(labelMatch[1]);
       }
-      
+
       if (!platingLabel) {
         if (platingPercent) {
           const num = parseFloat(platingPercent.replace("%", "").trim());
@@ -1135,7 +1136,7 @@ const OBAY_BACKGROUND_FETCH_THROTTLE_MS = 20000; // 20 seconds
 function formatObayItemNameFromApi(item) {
   const type = item.type_lang || item.type || "";
   const extra = item.extra || {};
-  
+
   if (type.toLowerCase() === "bodyguard") {
     const parts = [];
     if (extra.bodyguard_attack && extra.bodyguard_attack !== "0") {
@@ -1156,14 +1157,14 @@ function formatObayItemNameFromApi(item) {
     const suffix = parts.length > 0 ? " (" + parts.join(" | ") + ")" : "";
     return "Bodyguard: " + (extra.name || "") + suffix;
   }
-  
+
   if (extra.name) {
     if (extra.name.startsWith("(")) {
       return type + " " + extra.name;
     }
     return type + ": " + extra.name;
   }
-  
+
   return type;
 }
 
@@ -1213,22 +1214,22 @@ async function loadObayItemsViaApi() {
       }
 
       console.log("[Omerta Portal] Obay API raw items count=" + json.data.length);
-      
+
       const items = json.data.map(item => {
         const name = formatObayItemNameFromApi(item);
-        const seller = (item.seller && typeof item.seller === "object") 
-          ? (item.seller.name || "Anonymous") 
+        const seller = (item.seller && typeof item.seller === "object")
+          ? (item.seller.name || "Anonymous")
           : (item.seller || "Anonymous");
-          
+
         const bidsCount = parseInt(item.bids, 10) || 0;
         const priceVal = bidsCount > 0 ? item.bid_current : item.bid_start;
         const minimumBid = formatObayPrice(priceVal);
-        
+
         const binVal = parseInt(item.bid_buyitnow, 10) || 0;
         const buyItNow = binVal > 0 ? formatObayPrice(item.bid_buyitnow) : "-";
-        
+
         const bidder = bidsCount > 0 ? "Yes" : "-";
-        
+
         // Adjust endTime by adding lastKnownTimeDiff to handle user-server clock desync
         let endTime = String(item.time_end || "");
         if (endTime && lastKnownTimeDiff !== 0) {
@@ -1275,14 +1276,14 @@ async function fetchObayInBackground(settings, player, room) {
   try {
     const profile = detectServerProfile();
     const clientId = await getOrCreateClientId();
-    
+
     // Try fetching via API
     const items = await loadObayItemsViaApi();
     if (!items || items.length === 0) {
       console.log("[Omerta Portal] Background Obay fetch returned no items or failed. Skipping update.");
       return;
     }
-    
+
     await postObayUpdate(settings, {
       room,
       player,
@@ -1788,7 +1789,7 @@ async function startPolling() {
   }
   try {
     await writeStatus({ room: sanitizeRoom(settings.room) });
-  } catch (_e) {}
+  } catch (_e) { }
 
   if (!settings.enabled) {
     return;
