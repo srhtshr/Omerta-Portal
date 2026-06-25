@@ -16,28 +16,51 @@ const OMERTA_TAB_PATTERNS = [
 ];
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message || message.type !== "OMERTA_CONNECT_ALL") {
-    return;
+  if (!message) return;
+
+  if (message.type === "OMERTA_CONNECT_ALL") {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ url: OMERTA_TAB_PATTERNS });
+        const validTabs = (tabs || []).filter((tab) => typeof tab.id === "number");
+        if (validTabs.length === 0) {
+          sendResponse({ ok: false, error: "No open Omerta tab found." });
+          return;
+        }
+        await Promise.all(validTabs.map((tab) => chrome.tabs.reload(tab.id)));
+        sendResponse({ ok: true, count: validTabs.length });
+      } catch (error) {
+        sendResponse({ ok: false, error: error && error.message ? error.message : "Connect failed." });
+      }
+    })();
+    return true;
   }
 
-  (async () => {
-    try {
-      const tabs = await chrome.tabs.query({ url: OMERTA_TAB_PATTERNS });
-      const validTabs = (tabs || []).filter((tab) => typeof tab.id === "number");
-      if (validTabs.length === 0) {
-        sendResponse({ ok: false, error: "No open Omerta tab found." });
-        return;
+  if (message.type === "OMERTA_SEND_NOW_ALL") {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ url: OMERTA_TAB_PATTERNS });
+        const validTabs = (tabs || []).filter((tab) => typeof tab.id === "number");
+        if (validTabs.length === 0) {
+          sendResponse({ ok: false, error: "No open Omerta tab found." });
+          return;
+        }
+        // Try SEND_NOW on each tab; if no content script listener, reload that tab
+        await Promise.all(
+          validTabs.map(async (tab) => {
+            try {
+              await chrome.tabs.sendMessage(tab.id, { type: "SEND_NOW" });
+            } catch (_e) {
+              // Content script not ready on this tab — reload so it initializes
+              try { await chrome.tabs.reload(tab.id); } catch (_r) {}
+            }
+          })
+        );
+        sendResponse({ ok: true, count: validTabs.length });
+      } catch (error) {
+        sendResponse({ ok: false, error: error && error.message ? error.message : "Send failed." });
       }
-
-      await Promise.all(
-        validTabs.map((tab) => chrome.tabs.reload(tab.id))
-      );
-
-      sendResponse({ ok: true, count: validTabs.length });
-    } catch (error) {
-      sendResponse({ ok: false, error: error && error.message ? error.message : "Connect failed." });
-    }
-  })();
-
-  return true;
+    })();
+    return true;
+  }
 });

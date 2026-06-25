@@ -12,6 +12,24 @@ const fs = require("fs");
 const path = require("path");
 
 const roomsFilePath = path.join(__dirname, "data", "rooms.json");
+const obayFilePath = path.join(__dirname, "data", "obay.json");
+
+// Global Obay store: { [serverId]: { updatedAt, updatedBy, items } }
+function loadObayStore() {
+  try {
+    if (fs.existsSync(obayFilePath)) {
+      return JSON.parse(fs.readFileSync(obayFilePath, "utf8")) || {};
+    }
+  } catch (e) {}
+  return {};
+}
+function saveObayStore() {
+  try {
+    fs.mkdirSync(path.dirname(obayFilePath), { recursive: true });
+    fs.writeFileSync(obayFilePath, JSON.stringify(obayData, null, 2), "utf8");
+  } catch (e) {}
+}
+const obayData = loadObayStore();
 
 function loadRoomsStore() {
   try {
@@ -21,7 +39,6 @@ function loadRoomsStore() {
       for (const room of Object.values(data)) {
         room.players = room.players || {};
         room.chat = room.chat || [];
-        room.obay = room.obay || null;
         room.members = room.members || {};
         room.pending = room.pending || {};
         room.notes = room.notes || [];
@@ -65,7 +82,6 @@ if (Object.keys(rooms).length === 0) {
     pending: {},
     players: {},
     chat: [],
-    obay: null,
     notes: [],
     targets: []
   };
@@ -79,7 +95,6 @@ if (!rooms["General"]) {
     pending: {},
     players: {},
     chat: [],
-    obay: null,
     notes: [],
     targets: []
   };
@@ -89,11 +104,15 @@ if (modified) {
   saveRoomsStore(rooms);
 }
 
+const gameChatStore = {};
+const gameChatOutbox = [];
+let gameChatOutboxCounter = 0;
+
 app.use(cors());
 app.use(express.json());
 app.use("/icons", express.static(path.join(__dirname, "../icons")));
 
-app.get("/privacy", (req, res) => {
+app.get("/privacy", (_req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -310,10 +329,16 @@ function renderDashboardHtml() {
         flex-wrap: wrap;
       }
 
+      .brand-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-right: auto;
+      }
+
       .brand {
         font-size: 22px;
         font-weight: 700;
-        margin-right: auto;
       }
 
       .topbar-actions {
@@ -343,6 +368,38 @@ function renderDashboardHtml() {
         color: var(--accent);
       }
 
+      .lang-switcher {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 3px 4px;
+      }
+      .lang-btn {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        padding: 4px 8px;
+        min-width: 38px;
+        border-radius: 7px;
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        letter-spacing: 0.3px;
+      }
+      .lang-btn:hover { background: rgba(255,255,255,0.07); color: var(--text); }
+      .lang-btn.active { background: var(--accent); color: #fff; }
+      .lang-btn .lang-label { font-size: 10px; line-height: 1; }
+      .lang-btn .flag-icon { width: 24px; height: 16px; border-radius: 2px; display: block; }
+
       .nicknames-strip {
         display: flex;
         align-items: center;
@@ -354,8 +411,8 @@ function renderDashboardHtml() {
       .nickname-card {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 10px;
+        justify-content: flex-start;
+        gap: 8px;
         padding: 10px 12px;
         border: 1px solid var(--border);
         border-radius: 12px;
@@ -404,15 +461,18 @@ function renderDashboardHtml() {
         font-size: 11px;
         font-weight: 800;
         letter-spacing: 0.4px;
+        flex-shrink: 0;
       }
 
       .nickname-player {
-        color: var(--text);
+        color: var(--yellow);
         font-size: 12px;
         font-weight: 700;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        flex: 1;
+        text-align: center;
       }
 
       .input,
@@ -465,13 +525,15 @@ function renderDashboardHtml() {
         background: rgba(255, 255, 255, 0.02);
         border: 1px solid var(--border);
         border-radius: 8px;
-        padding: 4px 10px;
+        padding: 6px 12px;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         gap: 6px;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         user-select: none;
+        height: 32px;
+        box-sizing: border-box;
       }
 
       .server-chip:hover {
@@ -526,16 +588,17 @@ function renderDashboardHtml() {
 
       #rankFilterSelect {
         border: 1px solid var(--border);
-        border-radius: 6px;
+        border-radius: 8px;
         background-color: rgba(23, 29, 39, 0.95);
         color: var(--text);
-        padding: 4px 8px;
+        padding: 0 8px;
         font-size: 11px;
         width: 120px;
         outline: none;
         transition: border-color 0.15s ease;
         cursor: pointer;
-        height: 23px;
+        height: 32px;
+        box-sizing: border-box;
       }
 
       #rankFilterSelect:hover {
@@ -549,16 +612,18 @@ function renderDashboardHtml() {
 
       #myCharacterFilterBtn {
         border: 1px solid var(--border);
-        border-radius: 6px;
+        border-radius: 8px;
         background-color: rgba(23, 29, 39, 0.95);
         color: var(--text);
-        padding: 4px 8px;
+        padding: 0 12px;
         font-size: 11px;
-        min-width: 120px;
+        font-weight: 700;
+        min-width: 100px;
         outline: none;
         transition: all 0.15s ease;
         cursor: pointer;
-        height: 23px;
+        height: 32px;
+        box-sizing: border-box;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -644,6 +709,40 @@ function renderDashboardHtml() {
         padding: 12px 14px;
         border-bottom: 1px solid var(--border);
         background: rgba(255, 255, 255, 0.02);
+      }
+
+      .cooldowns-panel-header {
+        align-items: stretch;
+        gap: 12px;
+      }
+
+      .cooldowns-header-main,
+      .cooldowns-header-links {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        background: rgba(10, 14, 24, 0.72);
+      }
+
+      .cooldowns-header-main {
+        flex: 1 1 auto;
+        padding: 8px 10px;
+      }
+
+      .cooldowns-header-links {
+        flex: 0 0 auto;
+        padding: 8px 12px;
+      }
+
+      .cooldowns-header-main-inner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        min-width: 0;
+        width: 100%;
       }
 
       .panel-title {
@@ -732,9 +831,24 @@ function renderDashboardHtml() {
         font-size: 12px;
       }
 
+      .game-clock-display {
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 3px;
+        color: #a8c8e8;
+        background: rgba(0,0,0,0.28);
+        padding: 3px 10px;
+        border-radius: 5px;
+        border: 1px solid rgba(168,200,232,0.15);
+        min-width: 110px;
+        text-align: center;
+        flex-shrink: 0;
+      }
+
       .table-wrap {
         overflow: hidden;
-        padding: 0 4px 4px;
+        padding: 0 0 4px;
       }
 
       table {
@@ -753,6 +867,11 @@ function renderDashboardHtml() {
         font-size: 11px;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      th:not(:last-child),
+      td:not(:last-child) {
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
       }
 
       th {
@@ -854,6 +973,38 @@ function renderDashboardHtml() {
         font-weight: 700;
       }
 
+      .progress-cell {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 18px;
+      }
+
+      .progress-bar {
+        position: relative;
+        flex: 0 0 42px;
+        width: 42px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(84, 101, 138, 0.28);
+        overflow: hidden;
+      }
+
+      .progress-bar-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #4e72ff 0%, #5b7cff 100%);
+        box-shadow: 0 0 8px rgba(91, 124, 255, 0.28);
+      }
+
+      .progress-value {
+        color: var(--accent);
+        font-weight: 700;
+        font-size: 11px;
+        min-width: 34px;
+        text-align: right;
+      }
+
       .player-offline {
         color: var(--gray);
       }
@@ -861,6 +1012,15 @@ function renderDashboardHtml() {
       .ready {
         color: var(--green);
         font-weight: 700;
+      }
+
+      .ready-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #2ecc71;
+        vertical-align: middle;
       }
 
       .waiting {
@@ -925,82 +1085,55 @@ function renderDashboardHtml() {
 
       .chat-item {
         display: flex;
-        flex-direction: column;
-        max-width: 80%;
-        padding: 6px 10px;
-        border-radius: 10px;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 3px;
         font-size: 11px;
-        line-height: 1.3;
-        position: relative;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-        transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-        border: 1px solid transparent;
-      }
-
-      .chat-item.own {
-        align-self: flex-start;
-        background: #005c4b; /* WhatsApp own bubble color */
-        color: #edf2f7;
-      }
-
-      .chat-item.own:hover {
-        background: #0a6f5a;
-        border-color: rgba(141, 194, 255, 0.35);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
-      }
-
-      .chat-item.other {
-        align-self: flex-start;
-        background: #202c33; /* WhatsApp other bubble color */
-        color: #edf2f7;
-      }
-
-      .chat-content {
+        line-height: 1.5;
+        padding: 1px 0;
         word-break: break-word;
+        max-width: 100%;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
       }
 
-      .chat-actions {
-        display: flex;
-        align-items: center;
-      }
+      .chat-item.own { }
+      .chat-item.own:hover { background: transparent; }
+      .chat-item.other { }
 
-      .chat-meta-row {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 8px;
-        margin-top: 4px;
-      }
+      .chat-content { word-break: break-word; }
+
+      .chat-actions { display: inline-flex; align-items: center; }
+
+      .chat-meta-row { display: none; }
 
       .chat-reply-button {
         border: 0;
         background: transparent;
-        color: var(--accent);
+        color: var(--muted);
         font-size: 10px;
-        font-weight: 700;
         cursor: pointer;
-        padding: 0;
+        padding: 0 2px;
+        opacity: 0.6;
       }
 
       .chat-reply-button:hover {
-        color: #8dc2ff;
+        color: var(--accent);
+        opacity: 1;
       }
 
       .chat-player {
-        color: var(--yellow);
         font-weight: 700;
-        margin-right: 4px;
         text-decoration: none;
-        border-radius: 3px;
-        padding: 0 2px;
-        transition: color 0.15s, background 0.15s;
         cursor: pointer;
+        flex-shrink: 0;
       }
 
       .chat-player:hover {
-        color: var(--accent);
-        background: rgba(90, 169, 255, 0.12);
         text-decoration: underline;
+        opacity: 0.85;
       }
 
       .chat-text {
@@ -1024,22 +1157,16 @@ function renderDashboardHtml() {
       }
 
       .chat-item.template-message {
-        border-color: rgba(255, 214, 102, 0.22);
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.24);
+        border-left: 2px solid rgba(255, 214, 102, 0.35);
+        padding-left: 5px;
       }
 
-      .chat-item.template-message.own {
-        background: linear-gradient(135deg, #0c6b58 0%, #07584a 100%);
-      }
-
-      .chat-item.template-message.other {
-        background: linear-gradient(135deg, #263847 0%, #1d2d38 100%);
-      }
+      .chat-item.template-message.own { background: transparent; }
+      .chat-item.template-message.other { background: transparent; }
 
       .chat-item.template-message .chat-keyword {
         color: #7fd3ff !important;
         font-weight: 800;
-        text-shadow: 0 0 8px rgba(127, 211, 255, 0.18);
       }
 
       .chat-item.template-message .chat-location {
@@ -1048,9 +1175,10 @@ function renderDashboardHtml() {
       }
 
       .chat-time {
-        color: #8696a0; /* WhatsApp muted gray time */
-        font-size: 8px;
+        color: #7f8794;
+        font-size: 9px;
         white-space: nowrap;
+        flex-shrink: 0;
       }
 
       .chat-form {
@@ -1067,6 +1195,7 @@ function renderDashboardHtml() {
       }
 
       .chat-shortcut {
+        position: relative;
         padding: 4px 8px;
         font-size: 10px;
         background: var(--panel-2);
@@ -1079,6 +1208,48 @@ function renderDashboardHtml() {
       .chat-shortcut:hover {
         border-color: var(--accent);
         color: var(--accent);
+      }
+
+      .chat-shortcut.active-template {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      .shortcut-ready-badge {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #2ecc71;
+        border: 1.5px solid var(--panel);
+        display: none;
+        pointer-events: none;
+      }
+
+      .chat-shortcut.has-ready-badge .shortcut-ready-badge {
+        display: block;
+      }
+
+      .shortcut-locked-icon {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        line-height: 1;
+        pointer-events: none;
+      }
+
+      .chat-shortcut.has-locked-badge .shortcut-locked-icon {
+        display: inline-flex;
       }
 
       .chat-row {
@@ -1413,6 +1584,9 @@ function renderDashboardHtml() {
       }
 
       .chat-column-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
         font-size: 15px;
         font-weight: 800;
         letter-spacing: 0.02em;
@@ -1424,19 +1598,61 @@ function renderDashboardHtml() {
         font-weight: 700;
       }
 
+      .private-chat-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px 14px 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        background: linear-gradient(180deg, rgba(15, 20, 31, 0.96) 0%, rgba(13, 18, 28, 0.96) 100%);
+      }
+
+      .private-tabs-strip {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        width: 100%;
+      }
+
+      .private-chat-header .room-tab {
+        padding: 8px 14px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .private-chat-header .room-tab.active {
+        color: #7db6ff;
+        border-color: #7db6ff;
+        background: rgba(125, 182, 255, 0.08);
+        box-shadow: 0 0 0 1px rgba(125, 182, 255, 0.08), 0 6px 16px rgba(0, 0, 0, 0.18);
+      }
+
+      .private-chat-header .room-tab:hover:not(.active) {
+        color: var(--text);
+        border-color: rgba(255,255,255,0.16);
+        background: rgba(255,255,255,0.05);
+      }
+
       .chat-messages.compact {
-        min-height: 280px;
-        max-height: 280px;
+        min-height: 350px;
+        max-height: 350px;
         padding: 12px;
       }
 
       .chat-form.compact {
-        padding: 10px 12px 12px;
-        gap: 8px;
+        padding: 8px 12px 10px;
+        gap: 6px;
       }
 
       .chat-form.compact textarea.input {
-        min-height: 44px;
+        min-height: 38px;
+        resize: none;
       }
 
       .chat-submit-row {
@@ -1446,6 +1662,16 @@ function renderDashboardHtml() {
         justify-content: flex-end;
       }
 
+      .chat-compose-row {
+        display: flex;
+        align-items: stretch;
+        gap: 10px;
+      }
+
+      .chat-compose-row textarea.input {
+        flex: 1;
+      }
+
       .chat-submit-row .button[type="submit"] {
         min-width: 92px;
       }
@@ -1453,6 +1679,48 @@ function renderDashboardHtml() {
       .chat-submit-row .feedback {
         flex: 1;
         min-width: 0;
+      }
+
+      .chat-connection-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 20px;
+        padding: 0 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.03);
+      }
+
+      .chat-connection-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        display: inline-block;
+      }
+
+      .chat-connection-dot.online {
+        background: #33d17a;
+        box-shadow: 0 0 8px rgba(51, 209, 122, 0.55);
+      }
+
+      .chat-connection-dot.offline {
+        background: #6f7b8f;
+      }
+
+      .chat-connection-dot.error {
+        background: #ff6b6b;
+        box-shadow: 0 0 8px rgba(255, 107, 107, 0.45);
+      }
+
+      .feedback.connection-only {
+        display: inline-flex;
+        align-items: center;
+        min-height: 20px;
+      }
+
+      .chat-column-title .feedback.connection-only {
+        min-height: auto;
       }
 
       .private-chat-panel {
@@ -1526,11 +1794,134 @@ function renderDashboardHtml() {
         overflow: hidden;
       }
 
+      .private-chat-main #chatMessages {
+        min-height: 350px;
+        max-height: 350px;
+      }
+
+      .private-chat-main #chatForm {
+        padding: 8px 12px 10px;
+        gap: 6px;
+      }
+
+      .private-chat-main #chatForm textarea.input {
+        min-height: 38px;
+        resize: none;
+      }
+
+      .private-room-inline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: -2px;
+        margin-left: auto;
+        flex: 0 0 auto;
+        width: auto;
+        min-width: fit-content;
+        max-width: none;
+        justify-content: flex-end;
+        white-space: nowrap;
+      }
+
+      .private-room-inline-wrap {
+        position: relative;
+        flex: 0 0 150px;
+        width: 150px;
+        min-width: 150px;
+        max-width: 150px;
+      }
+
+      .private-room-inline-wrap .input {
+        width: 100%;
+        min-width: 0;
+        height: 32px;
+        min-height: 32px;
+        padding: 6px 42px 6px 10px;
+        font-size: 11px;
+      }
+
+      .private-room-inline-wrap #createRoomBtn {
+        position: absolute;
+        top: 50%;
+        right: 6px;
+        transform: translateY(-50%);
+        width: 24px !important;
+        min-width: 24px !important;
+        height: 24px;
+        padding: 0 !important;
+        border-radius: 8px;
+        font-size: 16px !important;
+        line-height: 1;
+      }
+
+      .private-room-inline #joinRoomBtn {
+        height: 32px;
+        padding: 0 12px;
+        font-size: 11px;
+        white-space: nowrap;
+        flex: 0 0 auto;
+      }
+
+      .private-chat-controls-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: nowrap;
+        gap: 10px;
+        width: 100%;
+      }
+
+      .private-chat-controls-row .chat-shortcuts {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      .city-shortcut-button {
+        position: relative;
+        min-width: 54px;
+        justify-content: center;
+      }
+
+      .city-shortcut-button.has-alert {
+        color: #ff6b6b;
+        border-color: rgba(255, 107, 107, 0.35);
+        background: rgba(255, 107, 107, 0.08);
+        box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.08);
+      }
+
+      .city-shortcut-badge {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: #b42318;
+        color: #fff;
+        font-size: 10px;
+        line-height: 1;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+      }
+
+      .city-shortcut-button.has-alert .city-shortcut-badge {
+        display: inline-flex;
+      }
+
+      .mail-shortcut-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+
       .private-chat-stage {
         display: flex;
         flex-direction: column;
         min-height: 0;
         flex: 1;
+        position: relative;
       }
 
       .private-chat-empty-state {
@@ -1556,15 +1947,22 @@ function renderDashboardHtml() {
       }
 
       .private-panel-topline {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        padding: 0 0 10px;
+        display: none;
       }
 
       .private-panel-topline .status-line {
-        margin: 0;
+        display: none;
+      }
+
+      #notesPanelHeaderButtons {
+        justify-content: flex-end;
+        align-items: center;
+      }
+
+      #notesPanelHeaderButtons .button {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
       }
 
       @media (max-width: 1100px) {
@@ -1588,9 +1986,12 @@ function renderDashboardHtml() {
   <body>
     <div class="page">
       <div class="topbar">
-        <div class="brand">Omerta Portal v1.0</div>
-        <div class="topbar-actions">
-          <a id="downloadExtensionLink" class="topbar-link" href="https://github.com/srhtshr/Omerta-Portal/raw/main/extension.zip" target="_blank" rel="noopener noreferrer">Download Extension</a>
+        <div class="brand-row">
+          <div class="brand">Omerta Portal v1.0</div>
+          <div class="lang-switcher">
+            <button class="lang-btn active" id="langBtnTR" onclick="setLang('tr')"><span class="lang-label">TR</span><svg class="flag-icon" width="24" height="16" viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg"><rect width="30" height="20" fill="#E30A17"/><circle cx="11.5" cy="10" r="5.5" fill="white"/><circle cx="13.5" cy="10" r="4.3" fill="#E30A17"/><polygon fill="white" points="18.5,10 20,7.5 22.5,9 20.5,6.8 22.5,4.5 20,6 18.5,3.5 18.5,6.2 16,4.5 18,7 16,9.2 18.5,7.7"/></svg></button>
+            <button class="lang-btn" id="langBtnEN" onclick="setLang('en')"><span class="lang-label">ENG</span><svg class="flag-icon" width="24" height="16" viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg"><rect width="30" height="20" fill="white"/><rect x="12.5" width="5" height="20" fill="#CF142B"/><rect y="7.5" width="30" height="5" fill="#CF142B"/></svg></button>
+          </div>
         </div>
         <input id="roomInput" type="hidden" value="General">
         <button id="applyRoomButton" class="button" type="button" style="display: none;">Open Room</button>
@@ -1613,7 +2014,10 @@ function renderDashboardHtml() {
           <span class="nickname-server">PT</span>
           <span id="nicknamePlayerPT" class="nickname-player">-</span>
         </a>
-        <button id="dashboardConnectBtn" class="button connect-button-card" type="button">Connect</button>
+        <div style="display:inline-flex;align-items:center;gap:3px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;padding:3px 4px;margin-left:auto;">
+          <button id="dashboardConnectBtn" class="button" type="button" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-weight:700;font-size:12px;cursor:pointer;transition:all 0.15s;white-space:nowrap;">↻ Synch</button>
+          <a id="downloadExtensionLink" href="https://github.com/srhtshr/Omerta-Portal/raw/main/extension.zip" target="_blank" rel="noopener noreferrer" data-i18n="downloadExtension" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 16px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-weight:700;font-size:12px;text-decoration:none;cursor:pointer;transition:all 0.15s;white-space:nowrap;">Download Extension</a>
+        </div>
       </div>
 
       <div class="layout">
@@ -1627,8 +2031,9 @@ function renderDashboardHtml() {
           </div>
 
           <section id="cooldownsPanel" class="panel">
-            <div class="panel-header">
-              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div class="panel-header cooldowns-panel-header">
+              <div class="cooldowns-header-main">
+                <div class="cooldowns-header-main-inner">
                 <div id="roomTitle" style="display: none;">General</div>
                 <div class="server-chip" id="card-tr" onclick="selectServer('tr')">
                   <span class="server-chip-name" id="name-tr">TR (0)</span>
@@ -1646,17 +2051,32 @@ function renderDashboardHtml() {
                   <span class="server-chip-name" id="name-pt">PT (0)</span>
                   <div class="server-chip-status" id="status-pt"></div>
                 </div>
-                <div id="stateMeta" class="status-line" style="margin-left: 8px;">Waiting for room selection.</div>
-                <form id="playerProfileSearchForm" style="display: inline-flex; align-items: center; margin-left: 14px; gap: 4px;" onsubmit="handlePlayerProfileSearch(event)">
-                  <input id="playerSearchInput" type="text" placeholder="Search player profile..." style="border: 1px solid var(--border); border-radius: 6px; background: rgba(0, 0, 0, 0.2); color: var(--text); padding: 4px 8px; font-size: 11px; width: 140px; outline: none; transition: border-color 0.15s ease;" autocomplete="off" title="Enter character name and press Enter or Go">
-                  <button type="submit" style="background: linear-gradient(180deg, #2b71c8 0%, #1f5ca8 100%); border: none; border-radius: 6px; color: var(--text); padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: filter 0.15s;" onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter='none'">Go</button>
+                <form id="playerProfileSearchForm" style="display:inline-flex;align-items:center;margin-left:14px;gap:4px;" onsubmit="handlePlayerProfileSearch(event)">
+                  <input id="playerSearchInput" type="text" placeholder="Search player profile..." data-i18n-placeholder="searchPlayerProfile" style="border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,0.2);color:var(--text);padding:0 10px;font-size:11px;width:140px;outline:none;transition:border-color 0.15s ease;height:32px;box-sizing:border-box;" autocomplete="off" title="Enter character name and press Enter or Go">
+                  <button type="submit" style="background:linear-gradient(180deg,#2b71c8 0%,#1f5ca8 100%);border:none;border-radius:8px;color:var(--text);padding:0 14px;font-size:11px;font-weight:700;cursor:pointer;transition:filter 0.15s;height:32px;box-sizing:border-box;" onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter='none'">Go</button>
                 </form>
                 <select id="rankFilterSelect">
-                  <option value="">All ranks</option>
+                  <option value="" data-i18n="allRanks">All ranks</option>
                 </select>
                 <button id="myCharacterFilterBtn" type="button">Character: -</button>
+                <div id="playerStatsChip" style="display:flex;align-items:center;gap:10px;padding:3px 14px;background:var(--panel-2);border:1px solid var(--border);border-radius:999px;font-size:11px;color:var(--text);position:relative;">
+                  <div style="display:flex;flex-direction:column;gap:1px;line-height:1.3;">
+                    <span title="Nakit">💰 <span id="playerMoneyValue">-</span></span>
+                    <span title="Banka" style="color:var(--muted);">🏦 <span id="playerBankValue">-</span></span>
+                  </div>
+                  <span style="color:var(--border);">|</span>
+                  <div style="display:flex;flex-direction:column;gap:1px;line-height:1.3;">
+                    <span title="Mermi">🔫 <span id="playerBulletsValue">-</span></span>
+                    <span title="Sağlık" style="color:var(--muted);">❤️ <span id="playerHealthValue">-</span></span>
+                  </div>
+                </div>
+                <button id="expToggleBtn" type="button" title="Hesap Tecrübeleri" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);font-size:18px;cursor:pointer;padding:0;">📊</button>
+                <a id="gamblingLink" href="#" target="_blank" rel="noopener noreferrer" title="Kumarhane" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);font-size:20px;text-decoration:none;cursor:pointer;">🎲</a>
+                <button id="obayCompactBtn" type="button" title="Obay Açık Artırma" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);padding:3px;cursor:pointer;overflow:hidden;"><img src="https://barafranca.com/static/images/game/generic/obay.gif" alt="Obay" style="width:30px;height:30px;object-fit:contain;display:block;"></button>
+                </div>
               </div>
-              <div class="quick-links-container" id="quickLinks">
+              <div class="cooldowns-header-links">
+                <div class="quick-links-container" id="quickLinks">
                 <a class="quick-link-item" id="link-crims" href="#" target="_blank" rel="noopener noreferrer">
                   <span class="quick-link-title">Crims</span>
                   <img class="quick-link-icon" src="/icons/Crims.png" alt="Crims">
@@ -1707,6 +2127,7 @@ function renderDashboardHtml() {
                   <span class="quick-link-title">Garage</span>
                   <img class="quick-link-icon" src="/icons/Garage.png" alt="Garage">
                 </a>
+                </div>
               </div>
             </div>
             <div class="table-wrap">
@@ -1749,10 +2170,10 @@ function renderDashboardHtml() {
               <div class="panel-header portal-chat-header">
                 <div>
                   <div class="panel-title">Game Chats</div>
-                  <div id="gameChatServerMeta" class="status-line">Chat server sync pending.</div>
                 </div>
                 <div class="portal-chat-meta">
-                  <span id="gameChatSyncLabel">GENERAL and CRIMES stay synced to the selected server.</span>
+                  <span id="gameChatSyncLabel"></span>
+                  <div id="gameChatServerMeta" class="game-clock-display"></div>
                   <button id="chatSoundToggleBtn" type="button" class="button" style="padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--text); font-weight: bold; flex-shrink: 0;" onclick="toggleChatSound()">
                     ğŸ”Š Sound: ON
                   </button>
@@ -1761,38 +2182,32 @@ function renderDashboardHtml() {
               <div class="dual-chat-grid">
                 <section class="game-chat-card general">
                   <div class="chat-column-header">
-                    <div class="chat-column-title">GENERAL</div>
+                    <div class="chat-column-title"><div id="gameGeneralFeedback" class="feedback"></div><span data-i18n="general">General</span></div>
                     <div id="gameGeneralCaption" class="chat-column-caption">No server selected</div>
                   </div>
                   <div id="gameGeneralMessages" class="chat-messages compact">
                     <div class="chat-empty">Loading general chat...</div>
                   </div>
                   <form id="gameGeneralForm" class="chat-form compact">
-                    <div class="chat-row">
-                      <textarea id="gameGeneralInput" class="input" maxlength="300" placeholder="Write to general chat..."></textarea>
-                    </div>
-                    <div class="chat-submit-row">
-                      <div id="gameGeneralFeedback" class="feedback"></div>
-                      <button class="button" type="submit">Send</button>
+                    <div class="chat-compose-row">
+                      <textarea id="gameGeneralInput" class="input" maxlength="300" placeholder="General kanalına yaz..." data-i18n-placeholder="generalPlaceholder"></textarea>
+                      <button id="gameGeneralSendBtn" class="button" type="submit" data-i18n="send">Send</button>
                     </div>
                   </form>
                 </section>
 
                 <section class="game-chat-card crimes">
                   <div class="chat-column-header">
-                    <div class="chat-column-title">CRIMES</div>
+                    <div class="chat-column-title"><div id="gameCrimesFeedback" class="feedback"></div><span data-i18n="crimes">Crimes</span></div>
                     <div id="gameCrimesCaption" class="chat-column-caption">No server selected</div>
                   </div>
                   <div id="gameCrimesMessages" class="chat-messages compact">
                     <div class="chat-empty">Loading crimes chat...</div>
                   </div>
                   <form id="gameCrimesForm" class="chat-form compact">
-                    <div class="chat-row">
-                      <textarea id="gameCrimesInput" class="input" maxlength="300" placeholder="Write to crimes chat..."></textarea>
-                    </div>
-                    <div class="chat-submit-row">
-                      <div id="gameCrimesFeedback" class="feedback"></div>
-                      <button class="button" type="submit">Send</button>
+                    <div class="chat-compose-row">
+                      <textarea id="gameCrimesInput" class="input" maxlength="300" placeholder="Crimes kanalına yaz..." data-i18n-placeholder="crimesPlaceholder"></textarea>
+                      <button id="gameCrimesSendBtn" class="button" type="submit" data-i18n="send">Send</button>
                     </div>
                   </form>
                 </section>
@@ -1802,14 +2217,11 @@ function renderDashboardHtml() {
             <aside id="chatPanel" class="panel private-chat-panel" style="position: relative;">
           <div class="panel-header portal-chat-header" style="padding: 10px 14px; gap: 6px;">
             <div style="flex: 1; min-width: 0; overflow: hidden;">
-              <div class="panel-title">Private Chat</div>
+              <div id="privateChatTitle" class="panel-title">Private Chat</div>
               <div id="chatPanelTitle" class="status-line" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Room Name">Portal General</div>
               <div id="chatMeta" class="status-line">No messages loaded.</div>
             </div>
             <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
-              <button id="chatAdminToggleBtn" type="button" class="button" style="display: none; padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--yellow); font-weight: bold; flex-shrink: 0;" onclick="toggleChatAdmin()">
-                ğŸ›¡ï¸ Admin
-              </button>
             </div>
           </div>
           <div class="private-panel-body">
@@ -1826,36 +2238,18 @@ function renderDashboardHtml() {
             </div>
             <div id="privateChatMain" class="private-chat-main">
               <div class="private-chat-stage">
-                <div class="private-panel-topline">
-                  <div class="status-line">Portal room controls</div>
-                  <div id="notesPanelHeaderButtons" style="display: none; gap: 4px; align-items: center; flex-shrink: 0;">
-              <button id="headerTargetsBtn" type="button" class="button" style="padding: 3px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: bold; white-space: nowrap;" onclick="toggleHeaderTab('targets')">
-                🎯 Targets (<span id="targetsCount">0</span>)
-              </button>
-              <button id="headerNotesBtn" type="button" class="button" style="padding: 3px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: bold; white-space: nowrap;" onclick="toggleHeaderTab('notes')">
-                📝 Notes (<span id="notesCount">0</span>)
-              </button>
-            </div>
-            <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
-              <button id="chatSoundToggleBtn" type="button" class="button" style="padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--text); font-weight: bold; flex-shrink: 0;" onclick="toggleChatSound()">
-                🔊 Sound: ON
-              </button>
-              <button id="chatAdminToggleBtn" type="button" class="button" style="display: none; padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--yellow); font-weight: bold; flex-shrink: 0;" onclick="toggleChatAdmin()">
-                🛡️ Admin
-              </button>
-            </div>
-          </div>
-
-          <!-- Collapsible Targets & Notes Panel body (only visible in private rooms, toggled by header buttons) -->
-          <div id="notesPanel" class="chat-notes-panel" style="display: none; border-bottom: 1px solid var(--border); background: var(--panel-2);">
-            <div id="notesPanelBody" style="padding: 10px 12px 12px 12px; background: rgba(0,0,0,0.15);">
+                <div class="private-panel-topline"></div>
+                
+          <!-- Collapsible Targets & Notes Panel body (overlay, does not push chat down) -->
+          <div id="notesPanel" class="chat-notes-panel" style="display: none; position: absolute; bottom: 36px; left: 50%; right: 0; z-index: 50; background: #161b24; border: 1px solid var(--border); border-top: 2px solid var(--accent); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.80); max-height: calc(100% - 44px); overflow-y: auto;">
+            <div id="notesPanelBody" style="padding: 10px 12px 12px 12px; background: #1a2030;">
               <!-- Targets Tab View -->
               <div id="tabTargetsView">
                 <form id="addTargetForm" style="display: flex; gap: 6px; margin-bottom: 8px;" onsubmit="handleNewTarget(event)">
                   <input id="targetNameInput" class="input" type="text" placeholder="Target name..." style="flex: 1; min-width: 0; padding: 4px 8px; font-size: 11px; height: 26px;" autocomplete="off" required>
                   <button type="submit" class="button" style="padding: 0 10px; font-size: 11px; font-weight: bold; height: 26px;">Add</button>
                 </form>
-                <div id="targetsListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; max-height: 140px; overflow-y: auto; padding-right: 2px;">
+                <div id="targetsListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; padding-right: 2px;">
                   <span class="muted" style="font-size: 10px;">No targets added yet.</span>
                 </div>
               </div>
@@ -1865,7 +2259,7 @@ function renderDashboardHtml() {
                   <input id="noteTextInput" class="input" type="text" placeholder="Note text (safehouse coords, planning)..." style="flex: 1; min-width: 0; padding: 4px 8px; font-size: 11px; height: 26px;" autocomplete="off" required>
                   <button type="submit" class="button" style="padding: 0 10px; font-size: 11px; font-weight: bold; height: 26px;">Add</button>
                 </form>
-                <div id="notesListContainer" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto; padding-right: 2px;">
+                <div id="notesListContainer" style="display: flex; flex-direction: column; gap: 6px; padding-right: 2px;">
                   <span class="muted" style="font-size: 10px;">No notes added yet.</span>
                 </div>
               </div>
@@ -1897,13 +2291,13 @@ function renderDashboardHtml() {
           </div>
           <form id="chatForm" class="chat-form">
             <div class="chat-shortcuts">
-              <button class="chat-shortcut" type="button" data-template="Heist">🔎 Heist</button>
-              <button class="chat-shortcut" type="button" data-template="OC">🔎 OC</button>
-              <button class="chat-shortcut" type="button" data-template="MOC">🔎 MOC</button>
-              <button class="chat-shortcut" type="button" data-template="Race">🔎 Race</button>
+              <button class="chat-shortcut" type="button" data-template="Heist"><span class="shortcut-label">🔎 Heist</span><span class="shortcut-ready-badge"></span><span class="shortcut-locked-icon">🔒</span></button>
+              <button class="chat-shortcut" type="button" data-template="OC"><span class="shortcut-label">🔎 OC</span><span class="shortcut-ready-badge"></span><span class="shortcut-locked-icon">🔒</span></button>
+              <button class="chat-shortcut" type="button" data-template="MOC"><span class="shortcut-label">🔎 MOC</span><span class="shortcut-ready-badge"></span><span class="shortcut-locked-icon">🔒</span></button>
+              <button class="chat-shortcut" type="button" data-template="Race"><span class="shortcut-label">🔎 Race</span><span class="shortcut-ready-badge"></span><span class="shortcut-locked-icon">🔒</span></button>
             </div>
             <div class="chat-row" style="position: relative; display: flex; gap: 6px;">
-              <textarea id="messageInput" class="input" maxlength="300" placeholder="Write a room message..." style="flex: 1;"></textarea>
+              <textarea id="messageInput" class="input" maxlength="300" placeholder="Oda mesajı yaz..." style="flex: 1;"></textarea>
               <button id="emojiButton" class="button" type="button" style="padding: 0 10px; font-size: 16px; background: var(--panel-2); border-color: var(--border);" title="Insert Emoji">😀</button>
               
               <!-- Emoji Panel -->
@@ -1940,81 +2334,444 @@ function renderDashboardHtml() {
         </aside>
           </section>
 
-          <section id="obayPanel" class="panel">
-            <div class="panel-header">
-              <div>
-                <button id="obayToggleButton" class="toggle-button panel-title" type="button">Obay Auctions</button>
-                <div id="obayMeta" class="status-line">No Obay data loaded.</div>
-              </div>
-            </div>
-            <div id="obayPanelBody" class="obay-panel-body">
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th title="Name">Name</th>
-                      <th title="Seller">Seller</th>
-                      <th title="Minimum Bid">Minimum Bid</th>
-                      <th title="Bidder">Bidder</th>
-                      <th title="End">End</th>
-                    </tr>
-                  </thead>
-                  <tbody id="obayTableBody">
-                    <tr>
-                      <td colspan="5" class="muted">No Obay data yet. Open Obay auctions page with the extension enabled.</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
         </div>
       </div>
 
     <script>
+      // ─── i18n Translation System ─────────────────────────────────────────────
+      const LANG = {
+        tr: {
+          downloadExtension: 'Eklentiyi İndir',
+          connect: '↻ Synch',
+          // Topbar / Nicknames
+          // Cooldowns panel
+          noRoomSelected: 'Oda seçilmedi.',
+          playerName: 'Oyuncu Adı',
+          rank: 'Rütbe',
+          progress: 'İlerleme',
+          activity: 'Aktivite',
+          // Game Chats
+          gameChats: 'Oyun Sohbetleri',
+          soundOn: '🔊 Ses: AÇIK',
+          soundOff: '🔇 Ses: KAPALI',
+          // Private Chat panel
+          privateChat: 'Özel Sohbet',
+          portalChannels: 'Portal Kanalları',
+          portalGeneral: 'Portal General',
+          noMessagesLoaded: 'Mesaj yüklenmedi.',
+          selectRoomToChat: 'Oda seçin ve sohbet başlatın.',
+          writeMessage: 'Oda mesajı yaz...',
+          sendMessage: 'Gönder',
+          roomName: 'Oda adı...',
+          createRoom: 'Oda Oluştur',
+          joinRoom: 'Katıl',
+          // Targets & Notes
+          targets: 'Hedefler',
+          notes: 'Notlar',
+          targetsBtn: '🎯 Hedefler',
+          notesBtn: '📝 Notlar',
+          targetNamePlaceholder: 'Hedef adı...',
+          addTarget: 'Ekle',
+          noTargetsYet: 'Henüz hedef eklenmedi.',
+          notePlaceholder: 'Not metni (safehouse koordinatları, planlama)...',
+          addNote: 'Ekle',
+          noNotesYet: 'Henüz not eklenmedi.',
+          // Admin
+          admin: '🛡️ Admin',
+          pending: 'Bekleyenler:',
+          members: 'Üyeler:',
+          roomAdmin: 'Oda Yönetimi',
+          // Access
+          accessRestricted: 'Erişim Kısıtlandı',
+          notMember: 'Bu odanın üyesi değilsiniz.',
+          joinRoom2: 'Odaya Katıl',
+          // Shortcuts
+          shortcutHeist: 'Soygun',
+          shortcutOC: 'ÖS',
+          shortcutMOC: 'MÖS',
+          shortcutRace: 'Yarış',
+          // Notifications
+          addedAsTarget: 'HEDEF olarak eklendi',
+          markedDead: 'ÖLDÜ olarak işaretlendi',
+          markedAlive: 'YAŞIYOR olarak işaretlendi',
+          added: 'ekledi',
+          marked: 'işaretledi',
+          asTarget: 'HEDEF olarak',
+          asDead: 'ÖLDÜ olarak',
+          asAlive: 'YAŞIYOR olarak',
+          // Dead toggle
+          markDead: '☠️ Öldü',
+          markAlive: '✅ Yaşıyor',
+          removeTarget: '🗑️ Kaldır',
+        },
+        en: {
+          downloadExtension: 'Download Extension',
+          connect: '↻ Synch',
+          noRoomSelected: 'No room selected.',
+          playerName: 'Player Name',
+          rank: 'Rank',
+          progress: 'Progress',
+          activity: 'Activity',
+          gameChats: 'Game Chats',
+          soundOn: '🔊 Sound: ON',
+          soundOff: '🔇 Sound: OFF',
+          privateChat: 'Private Chat',
+          portalChannels: 'Portal Channels',
+          portalGeneral: 'Portal General',
+          noMessagesLoaded: 'No messages loaded.',
+          selectRoomToChat: 'Select a room to load chat.',
+          writeMessage: 'Write a room message...',
+          sendMessage: 'Send Message',
+          roomName: 'Room Name...',
+          createRoom: 'Create Room',
+          joinRoom: 'Join',
+          targets: 'Targets',
+          notes: 'Notes',
+          targetsBtn: '🎯 Targets',
+          notesBtn: '📝 Notes',
+          targetNamePlaceholder: 'Target name...',
+          addTarget: 'Add',
+          noTargetsYet: 'No targets added yet.',
+          notePlaceholder: 'Note text (safehouse coords, planning)...',
+          addNote: 'Add',
+          noNotesYet: 'No notes added yet.',
+          admin: '🛡️ Admin',
+          pending: 'Pending:',
+          members: 'Members:',
+          roomAdmin: 'Room Administration',
+          accessRestricted: 'Access Restricted',
+          notMember: 'You are not a member of this room.',
+          joinRoom2: 'Join Room',
+          shortcutHeist: 'Heist',
+          shortcutOC: 'OC',
+          shortcutMOC: 'MOC',
+          shortcutRace: 'Race',
+          addedAsTarget: 'added as TARGET',
+          markedDead: 'marked as DEAD',
+          markedAlive: 'marked as ALIVE',
+          added: 'added',
+          marked: 'marked',
+          asTarget: 'as TARGET',
+          asDead: 'as DEAD',
+          asAlive: 'as ALIVE',
+          markDead: '☠️ Dead',
+          markAlive: '✅ Alive',
+          removeTarget: '🗑️ Remove',
+        }
+      };
+
+      Object.assign(LANG.tr, {
+        downloadExtension: "Eklentiyi Indir",
+        connect: "↻ Synch",
+        noRoomSelected: "Oda secilmedi.",
+        playerName: "Oyuncu Adi",
+        rank: "Rutbe",
+        progress: "Ilerleme",
+        activity: "Aktivite",
+        gameChats: "Oyun Sohbetleri",
+        general: "General",
+        crimes: "Crimes",
+        soundOn: "🔊 Ses: ACIK",
+        soundOff: "🔇 Ses: KAPALI",
+        privateChat: "Ozel Sohbet",
+        portalChannels: "Portal Kanallari",
+        portalGeneral: "Portal General",
+        noMessagesLoaded: "Mesaj yuklenmedi.",
+        selectRoomToChat: "Oda secin ve sohbet baslatin.",
+        writeMessage: "Oda mesaji yaz...",
+        send: "Gonder",
+        sendMessage: "Gonder",
+        roomName: "Oda adı...",
+        createRoom: "Oda Oluştur",
+        join: "Katıl",
+        joinRoom: "Katıl",
+        targets: "Hedefler",
+        notes: "Notlar",
+        targetsBtn: "🎯 Hedefler",
+        notesBtn: "📝 Notlar",
+        targetNamePlaceholder: "Hedef adı...",
+        addTarget: "Ekle",
+        noTargetsYet: "Henuz hedef eklenmedi.",
+        notePlaceholder: "Not metni (safehouse koordinatları, planlama)...",
+        addNote: "Ekle",
+        noNotesYet: "Henuz not eklenmedi.",
+        admin: "🛡️ Admin",
+        pending: "Bekleyenler:",
+        members: "Uyeler:",
+        roomAdmin: "Oda Yonetimi",
+        accessRestricted: "Erisim Kisıtlandi",
+        notMember: "Bu odanin uyesi degilsiniz.",
+        joinRoom2: "Odaya Katil",
+        shortcutHeist: "Heist",
+        shortcutOC: "OC",
+        shortcutMOC: "MOC",
+        shortcutRace: "Race",
+        templateVerb: "Ariyor",
+        added: "ekledi",
+        marked: "isaretledi",
+        asTarget: "TARGET olarak",
+        asDead: "DEAD olarak",
+        asAlive: "ALIVE olarak",
+        markDead: "☠️ Olu",
+        markAlive: "✅ Yasiyor",
+        removeTarget: "🗑️ Kaldir",
+        searchPlayerProfile: "Oyuncu profili ara...",
+        allRanks: "Tüm Seviyeler",
+        character: "Karakter",
+        generalPlaceholder: "General kanalina yaz...",
+        crimesPlaceholder: "Crimes kanalina yaz...",
+        privatePlaceholder: "Oda mesaji yaz...",
+        noMessagesYet: "Henuz mesaj yok",
+        loadingGeneralChat: "General sohbeti yukleniyor...",
+        loadingCrimesChat: "Crimes sohbeti yukleniyor...",
+        noPrivateChatPanel: "Portal General ozel sohbet paneline sahip degil.",
+        portalGeneralControlsOnly: "Portal General sadece oyuncu tablosunu kontrol eder.",
+        emptyPrivate: "Portal General sadece oyuncu tablosunu kontrol eder. Sohbet icin TestRoom veya ozel oda sec.",
+        targetWord: "TARGET",
+        deadWord: "DEAD",
+        aliveWord: "ALIVE",
+        templateVerb: "Arıyor"
+      });
+
+      Object.assign(LANG.en, {
+        general: "General",
+        crimes: "Crimes",
+        send: "Send",
+        join: "Join",
+        sendMessage: "Send",
+        roomName: "Room name...",
+        searchPlayerProfile: "Search player profile...",
+        allRanks: "All ranks",
+        character: "Character",
+        generalPlaceholder: "Write to general chat...",
+        crimesPlaceholder: "Write to crimes chat...",
+        privatePlaceholder: "Write a room message...",
+        noMessagesYet: "No messages yet",
+        loadingGeneralChat: "Loading general chat...",
+        loadingCrimesChat: "Loading crimes chat...",
+        noPrivateChatPanel: "Portal General has no private chat panel.",
+        portalGeneralControlsOnly: "Portal General controls the player table only.",
+        emptyPrivate: "Portal General controls the player table. Select TestRoom or a private room to use portal chat.",
+        targetWord: "TARGET",
+        deadWord: "DEAD",
+        aliveWord: "ALIVE"
+      });
+
+      Object.assign(LANG.tr, {
+        roomName: "Oda ad\u0131...",
+        createRoom: "Oda Olu\u015Ftur",
+        join: "Kat\u0131l",
+        joinRoom: "Kat\u0131l",
+        joinRoom2: "Odaya Kat\u0131l",
+        targetNamePlaceholder: "Hedef ad\u0131...",
+        notePlaceholder: "Not metni (safehouse koordinatlar\u0131, planlama)...",
+        accessRestricted: "Eri\u015Fim K\u0131s\u0131tland\u0131",
+        notMember: "Bu odan\u0131n \u00FCyesi de\u011Filsiniz.",
+        marked: "i\u015Faretledi",
+        allRanks: "Seviyeler",
+        noPrivateChatPanel: "Portal General \u00F6zel sohbet paneline sahip de\u011Fil.",
+        emptyPrivate: "Portal General sadece oyuncu tablosunu kontrol eder. Sohbet i\u00E7in TestRoom veya \u00F6zel oda se\u00E7.",
+        templateVerb: "Ar\u0131yor",
+        city: "City",
+        mailLabel: "Mesajlar"
+      });
+
+      Object.assign(LANG.en, {
+        allRanks: "Ranks",
+        city: "City",
+        mailLabel: "Messages"
+      });
+
+      let currentLang = localStorage.getItem('omerta_lang') === 'en' ? 'en' : 'tr';
+
+      function t(key) {
+        return (LANG[currentLang] && LANG[currentLang][key]) || (LANG['en'][key]) || key;
+      }
+
+      function setLang(lang) {
+        currentLang = lang === "en" ? "en" : "tr";
+        uiMessages = LANG[currentLang] || LANG.en;
+        localStorage.setItem('omerta_lang', currentLang);
+        // Update flag button active states
+        document.getElementById('langBtnTR').classList.toggle('active', lang === 'tr');
+        document.getElementById('langBtnEN').classList.toggle('active', lang === 'en');
+        applyLanguage();
+      }
+
+      function applyLanguage() {
+        const L = LANG[currentLang] || LANG.en;
+        uiMessages = L;
+        // All data-i18n elements
+        document.querySelectorAll('[data-i18n]').forEach(function(el) {
+          const key = el.getAttribute('data-i18n');
+          if (L[key]) el.textContent = L[key];
+        });
+        // Placeholders
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el) {
+          const key = el.getAttribute('data-i18n-placeholder');
+          if (L[key]) el.placeholder = L[key];
+        });
+        const langBtnTR = document.getElementById('langBtnTR');
+        const langBtnEN = document.getElementById('langBtnEN');
+        if (langBtnTR) {
+          langBtnTR.classList.toggle('active', currentLang === 'tr');
+          langBtnTR.innerHTML = '<span class="lang-label">TR</span><svg class="flag-icon" width="24" height="16" viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg"><rect width="30" height="20" fill="#E30A17"/><circle cx="11.5" cy="10" r="5.5" fill="white"/><circle cx="13.5" cy="10" r="4.3" fill="#E30A17"/><polygon fill="white" points="18.5,10 20,7.5 22.5,9 20.5,6.8 22.5,4.5 20,6 18.5,3.5 18.5,6.2 16,4.5 18,7 16,9.2 18.5,7.7"/></svg>';
+        }
+        if (langBtnEN) {
+          langBtnEN.classList.toggle('active', currentLang === 'en');
+          langBtnEN.innerHTML = '<span class="lang-label">ENG</span><svg class="flag-icon" width="24" height="16" viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg"><rect width="30" height="20" fill="white"/><rect x="12.5" width="5" height="20" fill="#CF142B"/><rect y="7.5" width="30" height="5" fill="#CF142B"/></svg>';
+        }
+        // Connect button
+        const connectBtn = document.getElementById('dashboardConnectBtn');
+        if (connectBtn) connectBtn.textContent = L.connect;
+        // Download link
+        const dlLink = document.getElementById('downloadExtensionLink');
+        if (dlLink) dlLink.textContent = L.downloadExtension;
+        // Sound button (game chats)
+        const soundBtn = document.getElementById('chatSoundToggleBtn');
+        if (soundBtn) {
+          const isOn = soundBtn.textContent.includes('ON') || soundBtn.textContent.includes('AÇIK');
+          soundBtn.textContent = isOn ? L.soundOn : L.soundOff;
+        }
+        // Unauthorized panel
+        const uTitle = document.getElementById('unauthorizedTitle');
+        if (uTitle) uTitle.textContent = L.accessRestricted;
+        const uMsg = document.getElementById('unauthorizedMessage');
+        if (uMsg) uMsg.textContent = L.notMember;
+        const uBtn = document.getElementById('unauthorizedJoinBtn');
+        if (uBtn) uBtn.textContent = L.joinRoom2;
+        // No room selected in table
+        const noRoomTd = document.querySelector('#cooldownTableBody td.muted');
+        if (noRoomTd) noRoomTd.textContent = L.noRoomSelected;
+        // Game Chats panel title
+        const gcTitle = document.querySelector('.game-chats-panel .panel-title');
+        if (gcTitle) gcTitle.textContent = L.gameChats;
+        // Private Chat elements (may not exist if not rendered yet)
+        const pcTitle = document.getElementById('privateChatTitle');
+        if (pcTitle) pcTitle.textContent = L.privateChat;
+        const pcSidebar = document.querySelector('.private-room-sidebar-title');
+        if (pcSidebar) pcSidebar.textContent = L.portalChannels;
+        // Message input placeholder
+        const msgInput = document.getElementById('messageInput');
+        if (msgInput) msgInput.placeholder = L.writeMessage;
+        // Send button
+        const sendBtn = document.getElementById('privateChatSendBtn');
+        if (sendBtn) sendBtn.textContent = L.sendMessage;
+        // Room name input placeholder
+        const roomInput2 = document.getElementById('newRoomInput');
+        if (roomInput2) roomInput2.placeholder = L.roomName;
+        // Join button
+        const joinBtn = document.getElementById('joinRoomBtn');
+        if (joinBtn) joinBtn.textContent = L.join || L.joinRoom;
+        // Admin button
+        const adminBtn = document.getElementById('chatAdminToggleBtn');
+        if (adminBtn) adminBtn.textContent = L.admin;
+        // Targets & Notes header buttons
+        const targetsBtn = document.getElementById('headerTargetsBtn');
+        const targetsCount = document.getElementById('targetsCount');
+        if (targetsBtn && targetsCount) {
+          targetsBtn.innerHTML = L.targetsBtn + ' (<span id="targetsCount">' + targetsCount.textContent + '</span>)';
+        }
+        const notesBtn = document.getElementById('headerNotesBtn');
+        const notesCount = document.getElementById('notesCount');
+        if (notesBtn && notesCount) {
+          notesBtn.innerHTML = L.notesBtn + ' (<span id="notesCount">' + notesCount.textContent + '</span>)';
+        }
+        // Target name input placeholder
+        const targetInput = document.getElementById('targetNameInput');
+        if (targetInput) targetInput.placeholder = L.targetNamePlaceholder;
+        // Note text input placeholder
+        const noteInput = document.getElementById('noteTextInput');
+        if (noteInput) noteInput.placeholder = L.notePlaceholder;
+        // Add target button
+        const addTargetBtn = document.querySelector('#addTargetForm button[type="submit"]');
+        if (addTargetBtn) addTargetBtn.textContent = L.addTarget;
+        // Add note button
+        const addNoteBtn = document.querySelector('#addNoteForm button[type="submit"]');
+        if (addNoteBtn) addNoteBtn.textContent = L.addNote;
+        // Empty state placeholders
+        const noTargets = document.querySelector('#targetsListContainer > .muted');
+        if (noTargets) noTargets.textContent = L.noTargetsYet;
+        const noNotes = document.querySelector('#notesListContainer > .muted');
+        if (noNotes) noNotes.textContent = L.noNotesYet;
+        // Shortcut buttons
+        const shortcuts = document.querySelectorAll('.chat-shortcut[data-template]');
+        shortcuts.forEach(function(btn) {
+          const tpl = btn.getAttribute('data-template');
+          const lbl = btn.querySelector('.shortcut-label');
+          if (!lbl) return;
+          if (tpl === 'Heist' && L.shortcutHeist) lbl.textContent = L.shortcutHeist;
+          else if (tpl === 'OC' && L.shortcutOC) lbl.textContent = L.shortcutOC;
+          else if (tpl === 'MOC' && L.shortcutMOC) lbl.textContent = L.shortcutMOC;
+          else if (tpl === 'Race' && L.shortcutRace) lbl.textContent = L.shortcutRace;
+        });
+        // Admin panel title & labels
+        const adminTitle = document.querySelector('#chatAdminPanel span[style*="yellow"]');
+        if (adminTitle) adminTitle.textContent = L.roomAdmin;
+        const pendingLabel = document.querySelector('#chatAdminPanel div[style*="yellow"][style*="font-weight"]');
+        if (pendingLabel) pendingLabel.textContent = L.pending;
+        const membersLabel = document.querySelector('#chatAdminPanel div[style*="accent"][style*="font-weight"]');
+        if (membersLabel) membersLabel.textContent = L.members;
+        // Dead/alive toggle buttons in targets list
+        document.querySelectorAll('.target-dead-btn').forEach(function(btn) {
+          const isDead = btn.getAttribute('data-dead') === '1';
+          btn.textContent = isDead ? L.markAlive : L.markDead;
+        });
+        document.querySelectorAll('.target-remove-btn').forEach(function(btn) {
+          btn.textContent = L.removeTarget;
+        });
+        // Chat empty state
+        const chatEmpty = document.querySelector('.chat-empty');
+        if (chatEmpty) chatEmpty.textContent = L.selectRoomToChat;
+        const generalEmpty = document.querySelector('#gameGeneralMessages .chat-empty');
+        if (generalEmpty) generalEmpty.textContent = L.loadingGeneralChat || generalEmpty.textContent;
+        const crimesEmpty = document.querySelector('#gameCrimesMessages .chat-empty');
+        if (crimesEmpty) crimesEmpty.textContent = L.loadingCrimesChat || crimesEmpty.textContent;
+        // Private chat idle state
+        const idleState = document.getElementById('privateChatEmptyState');
+        if (idleState) idleState.textContent = uiMessages.emptyPrivate || L.selectRoomToChat;
+        const rankDefault = document.querySelector('#rankFilterSelect option[value=""]');
+        if (rankDefault && L.allRanks) rankDefault.textContent = L.allRanks;
+        const characterBtn = document.getElementById('myCharacterFilterBtn');
+        if (characterBtn && !myPlayerName) characterBtn.textContent = t("character") + ": -";
+        updateSoundButtonState();
+        updateCityShortcutButton();
+        const soundBtnLang = document.getElementById('chatSoundToggleBtn');
+        if (soundBtnLang) soundBtnLang.textContent = uiMessages.soundOn && uiMessages.soundOff
+          ? (isChatSoundEnabled ? uiMessages.soundOn : uiMessages.soundOff)
+          : soundBtnLang.textContent;
+        if (langBtnTR) langBtnTR.innerHTML = '<span class="lang-label">TR</span><svg class="flag-icon" width="24" height="16" viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg"><rect width="30" height="20" fill="#E30A17"/><circle cx="11.5" cy="10" r="5.5" fill="white"/><circle cx="13.5" cy="10" r="4.3" fill="#E30A17"/><polygon fill="white" points="18.5,10 20,7.5 22.5,9 20.5,6.8 22.5,4.5 20,6 18.5,3.5 18.5,6.2 16,4.5 18,7 16,9.2 18.5,7.7"/></svg>';
+        if (langBtnEN) langBtnEN.innerHTML = '<span class="lang-label">ENG</span><svg class="flag-icon" width="24" height="16" viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg"><rect width="30" height="20" fill="white"/><rect x="12.5" width="5" height="20" fill="#CF142B"/><rect y="7.5" width="30" height="5" fill="#CF142B"/></svg>';
+      }
+
+      const applyLang = applyLanguage;
+      // ─── End i18n ─────────────────────────────────────────────────────────────
+
       const chatPanelRoot = document.getElementById("chatPanel");
       if (chatPanelRoot) {
+        chatPanelRoot.className = "panel chat";
         chatPanelRoot.innerHTML = \`
-          <div class="panel-header portal-chat-header">
+          <div class="panel-header private-chat-header">
             <div style="flex: 1; min-width: 0; overflow: hidden;">
-              <div class="panel-title">Private Chat</div>
-              <div id="chatPanelTitle" class="status-line" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Room Name">Portal General</div>
-              <div id="chatMeta" class="status-line">No messages loaded.</div>
+              <div id="chatPanelTitle" class="panel-title" style="display: none;" title="Room Name">Room</div>
+              <div id="chatMeta" class="status-line" style="display: none;">No messages loaded.</div>
+              <div id="roomTabsContainer" class="private-tabs-strip"></div>
             </div>
-            <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
-              <button id="chatAdminToggleBtn" type="button" class="button" style="display: none; padding: 4px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--yellow); font-weight: bold; flex-shrink: 0;" onclick="toggleChatAdmin()">Admin</button>
-            </div>
+            <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;"></div>
           </div>
           <div class="private-panel-body">
-            <div class="private-room-toolbar">
-              <div class="private-room-select-wrap">
-                <select id="roomTabsContainer" class="private-room-select"></select>
-              </div>
-              <div class="private-room-actions">
-                <input id="newRoomInput" class="input" type="text" placeholder="Room Name..." maxlength="32">
-                <div class="private-room-action-row">
-                  <button id="createRoomBtn" class="button" type="button">Create</button>
-                  <button id="joinRoomBtn" class="button" type="button">Join</button>
-                </div>
-              </div>
-            </div>
+            <div class="private-room-toolbar" style="display: none;"></div>
             <div id="privateChatMain" class="private-chat-main">
               <div class="private-chat-stage">
-                <div class="private-panel-topline">
-                  <div class="status-line">Portal room controls</div>
-                  <div id="notesPanelHeaderButtons" style="display: none; gap: 4px; align-items: center; flex-shrink: 0;">
-                    <button id="headerTargetsBtn" type="button" class="button" style="padding: 3px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: bold; white-space: nowrap;" onclick="toggleHeaderTab('targets')">Targets (<span id="targetsCount">0</span>)</button>
-                    <button id="headerNotesBtn" type="button" class="button" style="padding: 3px 8px; font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: bold; white-space: nowrap;" onclick="toggleHeaderTab('notes')">Notes (<span id="notesCount">0</span>)</button>
-                  </div>
-                </div>
-                <div id="notesPanel" class="chat-notes-panel" style="display: none; border-bottom: 1px solid var(--border); background: var(--panel-2);">
-                  <div id="notesPanelBody" style="padding: 10px 12px 12px 12px; background: rgba(0,0,0,0.15);">
+                <div class="private-panel-topline"></div>
+                <div id="notesPanel" class="chat-notes-panel" style="display: none; position: absolute; bottom: 36px; left: 50%; right: 0; z-index: 50; background: #161b24; border: 1px solid var(--border); border-top: 2px solid var(--accent); border-radius: 10px; box-shadow: 0 -6px 32px rgba(0,0,0,0.80); max-height: calc(100% - 78px); overflow-y: auto;">
+                  <div id="notesPanelBody" style="padding: 10px 12px 12px 12px; background: #1a2030;">
                     <div id="tabTargetsView">
                       <form id="addTargetForm" style="display: flex; gap: 6px; margin-bottom: 8px;" onsubmit="handleNewTarget(event)">
                         <input id="targetNameInput" class="input" type="text" placeholder="Target name..." style="flex: 1; min-width: 0; padding: 4px 8px; font-size: 11px; height: 26px;" autocomplete="off" required>
                         <button type="submit" class="button" style="padding: 0 10px; font-size: 11px; font-weight: bold; height: 26px;">Add</button>
                       </form>
-                      <div id="targetsListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; max-height: 140px; overflow-y: auto; padding-right: 2px;">
+                      <div id="targetsListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; padding-right: 2px;">
                         <span class="muted" style="font-size: 10px;">No targets added yet.</span>
                       </div>
                     </div>
@@ -2023,7 +2780,7 @@ function renderDashboardHtml() {
                         <input id="noteTextInput" class="input" type="text" placeholder="Note text (safehouse coords, planning)..." style="flex: 1; min-width: 0; padding: 4px 8px; font-size: 11px; height: 26px;" autocomplete="off" required>
                         <button type="submit" class="button" style="padding: 0 10px; font-size: 11px; font-weight: bold; height: 26px;">Add</button>
                       </form>
-                      <div id="notesListContainer" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto; padding-right: 2px;">
+                      <div id="notesListContainer" style="display: flex; flex-direction: column; gap: 6px; padding-right: 2px;">
                         <span class="muted" style="font-size: 10px;">No notes added yet.</span>
                       </div>
                     </div>
@@ -2051,24 +2808,45 @@ function renderDashboardHtml() {
                   <div class="chat-empty">Select a room to load chat.</div>
                 </div>
                 <form id="chatForm" class="chat-form">
-                  <div class="chat-shortcuts">
-                    <button class="chat-shortcut" type="button" data-template="Heist">Heist</button>
-                    <button class="chat-shortcut" type="button" data-template="OC">OC</button>
-                    <button class="chat-shortcut" type="button" data-template="MOC">MOC</button>
-                    <button class="chat-shortcut" type="button" data-template="Race">Race</button>
+                  <div class="private-chat-controls-row">
+                    <div class="chat-shortcuts">
+                      <button class="chat-shortcut" type="button" data-template="Heist"><span class="shortcut-label">Heist</span><span class="shortcut-ready-badge"></span><span class="shortcut-locked-icon">🔒</span></button>
+                      <button class="chat-shortcut" type="button" data-template="OC"><span class="shortcut-label">OC</span><span class="shortcut-ready-badge"></span><span class="shortcut-locked-icon">🔒</span></button>
+                      <button class="chat-shortcut" type="button" data-template="MOC"><span class="shortcut-label">MOC</span><span class="shortcut-ready-badge"></span><span class="shortcut-locked-icon">🔒</span></button>
+                      <button class="chat-shortcut" type="button" data-template="Race"><span class="shortcut-label">Race</span><span class="shortcut-ready-badge"></span><span class="shortcut-locked-icon">🔒</span></button>
+                    </div>
+                    <button id="cityShortcutBtn" class="chat-shortcut city-shortcut-button" type="button" title="City">City<span class="city-shortcut-badge">&#x1F381;</span></button>
+                    <div class="private-room-inline">
+                      <div class="private-room-inline-wrap">
+                        <input id="newRoomInput" class="input" type="text" placeholder="Room Name..." maxlength="32">
+                        <button id="createRoomBtn" class="button" type="button" title="Create room">+</button>
+                      </div>
+                      <button id="joinRoomBtn" class="button" type="button">Join</button>
+                    </div>
                   </div>
                   <div class="chat-row" style="position: relative; display: flex; gap: 6px;">
-                    <textarea id="messageInput" class="input" maxlength="300" placeholder="Write a room message..." style="flex: 1;"></textarea>
-                    <button id="emojiButton" class="button" type="button" style="padding: 0 10px; font-size: 16px; background: var(--panel-2); border-color: var(--border);" title="Insert Emoji">+</button>
+                    <textarea id="messageInput" class="input" maxlength="300" placeholder="Oda mesajı yaz..." style="flex: 1;"></textarea>
+                    <button id="emojiButton" class="button" type="button" style="padding: 0 10px; font-size: 16px; background: var(--panel-2); border-color: var(--border);" title="Insert Emoji">😀</button>
+                    <button id="privateChatSendBtn" class="button" type="submit">Send Message</button>
                     <div id="emojiPanel" style="display: none; position: absolute; bottom: 100%; right: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; width: 220px; grid-template-columns: repeat(6, 1fr); gap: 4px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
                       <span class="emoji-item">😀</span><span class="emoji-item">😁</span><span class="emoji-item">😂</span><span class="emoji-item">🤣</span><span class="emoji-item">😎</span><span class="emoji-item">😍</span><span class="emoji-item">😘</span><span class="emoji-item">😡</span><span class="emoji-item">😭</span><span class="emoji-item">👍</span><span class="emoji-item">👎</span><span class="emoji-item">✅</span><span class="emoji-item">❌</span><span class="emoji-item">🔥</span><span class="emoji-item">💀</span><span class="emoji-item">🎯</span><span class="emoji-item">🚀</span><span class="emoji-item">💰</span><span class="emoji-item">🔫</span><span class="emoji-item">🛡️</span><span class="emoji-item">🍺</span><span class="emoji-item">💊</span>
                     </div>
                   </div>
                   <div class="chat-row">
-                    <div id="chatFeedback" class="feedback"></div>
-                    <button class="button" type="submit">Send Message</button>
+                    <div id="chatFeedback" class="feedback" style="display: none;"></div>
                   </div>
                 </form>
+              </div>
+            </div>
+            <!-- Bottom toolbar: outside private-chat-main, inside private-panel-body -->
+            <div style="display:flex;align-items:center;padding:8px 0 0 0;gap:6px;">
+              <button id="chatAdminToggleBtn" type="button" class="button" style="display:none;height:26px;padding:0 10px;font-size:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--yellow);font-weight:bold;white-space:nowrap;box-sizing:border-box;" onclick="toggleChatAdmin()">&#x1F6E1;&#xFE0F; Admin</button>
+              <div style="display:flex;gap:6px;align-items:center;margin-left:auto;">
+                <button id="headerMailBtn" type="button" class="button mail-shortcut-button" style="height:26px;padding:0 8px;font-size:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted);font-weight:bold;white-space:nowrap;box-sizing:border-box;">📬 Mesajlar (<span id="mailUnreadCount">0</span>)</button>
+                <div id="notesPanelHeaderButtons" style="display:none;gap:6px;align-items:center;">
+                  <button id="headerTargetsBtn" type="button" class="button" style="height:26px;padding:0 8px;font-size:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted);font-weight:bold;white-space:nowrap;box-sizing:border-box;" onclick="toggleHeaderTab('targets')">&#x1F3AF; Hedefler (<span id="targetsCount">0</span>)</button>
+                  <button id="headerNotesBtn" type="button" class="button" style="height:26px;padding:0 8px;font-size:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted);font-weight:bold;white-space:nowrap;box-sizing:border-box;" onclick="toggleHeaderTab('notes')">&#x1F4DD; Notlar (<span id="notesCount">0</span>)</button>
+                </div>
               </div>
             </div>
           </div>\`;
@@ -2079,7 +2857,6 @@ function renderDashboardHtml() {
       const roomTitle = document.getElementById("roomTitle");
       const stateMeta = document.getElementById("stateMeta");
       const rankSortButton = document.getElementById("rankSortButton");
-      const obayToggleButton = document.getElementById("obayToggleButton");
       const rankFilterSelect = document.getElementById("rankFilterSelect");
       const myCharacterFilterBtn = document.getElementById("myCharacterFilterBtn");
       const dashboardConnectBtn = document.getElementById("dashboardConnectBtn");
@@ -2087,9 +2864,6 @@ function renderDashboardHtml() {
       const nicknamePlayerCOM = document.getElementById("nicknamePlayerCOM");
       const nicknamePlayerNL = document.getElementById("nicknamePlayerNL");
       const nicknamePlayerPT = document.getElementById("nicknamePlayerPT");
-      const obayMeta = document.getElementById("obayMeta");
-      const obayPanelBody = document.getElementById("obayPanelBody");
-      const obayTableBody = document.getElementById("obayTableBody");
       const chatMeta = document.getElementById("chatMeta");
       const cooldownTableBody = document.getElementById("cooldownTableBody");
       const chatMessages = document.getElementById("chatMessages");
@@ -2098,7 +2872,12 @@ function renderDashboardHtml() {
       const chatFeedback = document.getElementById("chatFeedback");
       const chatPanelTitle = document.getElementById("chatPanelTitle");
       const privateChatMain = document.getElementById("privateChatMain");
+      const privateChatTitle = document.getElementById("privateChatTitle");
+      const privateRoomControlsLabel = document.getElementById("privateRoomControlsLabel");
+      const privateChatEmptyState = document.getElementById("privateChatEmptyState");
+      const privateChatSendBtn = document.getElementById("privateChatSendBtn");
       const gameChatServerMeta = document.getElementById("gameChatServerMeta");
+      const gameChatSyncLabel = document.getElementById("gameChatSyncLabel");
       const gameGeneralCaption = document.getElementById("gameGeneralCaption");
       const gameCrimesCaption = document.getElementById("gameCrimesCaption");
       const gameGeneralMessages = document.getElementById("gameGeneralMessages");
@@ -2107,9 +2886,13 @@ function renderDashboardHtml() {
       const gameCrimesForm = document.getElementById("gameCrimesForm");
       const gameGeneralInput = document.getElementById("gameGeneralInput");
       const gameCrimesInput = document.getElementById("gameCrimesInput");
+      const gameGeneralSendBtn = document.getElementById("gameGeneralSendBtn");
+      const gameCrimesSendBtn = document.getElementById("gameCrimesSendBtn");
       const gameGeneralFeedback = document.getElementById("gameGeneralFeedback");
       const gameCrimesFeedback = document.getElementById("gameCrimesFeedback");
       const dashboardNicknames = { tr: "-", com: "-", nl: "-", pt: "-" };
+
+      let uiMessages = LANG[currentLang] || LANG.en;
 
       const FIXED_ROOM = "General";
       const cooldownColumns = [
@@ -2175,15 +2958,31 @@ function renderDashboardHtml() {
 
       let currentRoom = "";
       let pollTimer = null;
-      let obayPollTimer = null;
       let latestState = null;
       let isConnected = false;
       let myPlayerName = "";
       let myClientId = "";
+      let cachedSelfProgression = null;
       let userRoomStatus = "none";
       let isChatAdminOpen = false;
       let lastChatMsgTime = 0;
       let gameChatLastSeen = { general: 0, crimes: 0 };
+      const gameChatSeenIds = { general: new Set(), crimes: new Set() };
+      let lastGameChatServerId = null;
+      var gameChatServerTimeBase = null;
+      var gameChatClockInterval = null;
+      function computeServerClock(baseTime, syncedAt) {
+        var parts = String(baseTime).split(":");
+        var h = parseInt(parts[0], 10) || 0;
+        var m = parseInt(parts[1], 10) || 0;
+        var s = parseInt(parts[2], 10) || 0;
+        var total = h * 3600 + m * 60 + s + Math.floor((Date.now() - syncedAt) / 1000);
+        total = ((total % 86400) + 86400) % 86400;
+        var hh = Math.floor(total / 3600);
+        var mm = Math.floor((total % 3600) / 60);
+        var ss = total % 60;
+        return (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm + ":" + (ss < 10 ? "0" : "") + ss;
+      }
       let isChatSoundEnabled = true;
       try {
         const stored = localStorage.getItem("omerta_chat_sound_enabled");
@@ -2197,7 +2996,6 @@ function renderDashboardHtml() {
       let rankSortDirection = 0;
       let selectedRankFilter = "";
       let isMyCharacterFilterActive = false;
-      let isObayExpanded = false;
       let activeServerFilter = "";
       let shouldAutoSelectServer = true;
       let activeTemplateState = null;
@@ -2287,12 +3085,190 @@ function renderDashboardHtml() {
       }
 
       function getGameChatRoomLabel(kind) {
-        return (kind === "crimes" ? "CRIMES" : "GENERAL") + " (" + getActiveChatServerId().toUpperCase() + ")";
+        return getActiveChatServerId().toUpperCase();
+      }
+
+      function setConnectionIndicator(feedbackEl, state, titleText) {
+        if (!feedbackEl) return;
+        const safeState = state === "online" || state === "error" ? state : "offline";
+        feedbackEl.className = "feedback connection-only";
+        feedbackEl.textContent = "";
+        feedbackEl.title = titleText || "";
+        feedbackEl.innerHTML = '<span class="chat-connection-indicator" aria-label="' + escapeHtml(titleText || safeState) + '"><span class="chat-connection-dot ' + safeState + '"></span></span>';
       }
 
       function setPrivateChatIdleState(isIdle) {
-        if (!privateChatMain) return;
-        privateChatMain.classList.toggle("is-idle", !!isIdle);
+        return;
+      }
+
+      function updateNotesButtonsText() {
+        const targetsCountEl = document.getElementById("targetsCount");
+        const notesCountEl = document.getElementById("notesCount");
+        const mailUnreadCountEl = document.getElementById("mailUnreadCount");
+        const targetsCount = targetsCountEl ? targetsCountEl.textContent : "0";
+        const notesCount = notesCountEl ? notesCountEl.textContent : "0";
+        const mailUnreadCount = mailUnreadCountEl ? mailUnreadCountEl.textContent : "0";
+        const headerMailBtn = document.getElementById("headerMailBtn");
+        const headerTargetsBtn = document.getElementById("headerTargetsBtn");
+        const headerNotesBtn = document.getElementById("headerNotesBtn");
+        if (headerMailBtn) headerMailBtn.innerHTML = escapeHtml(uiMessages.mailLabel || "Messages") + ' (<span id="mailUnreadCount">' + escapeHtml(mailUnreadCount) + "</span>)";
+        if (headerTargetsBtn) headerTargetsBtn.innerHTML = "&#x1F3AF; " + escapeHtml(uiMessages.targets) + ' (<span id="targetsCount">' + escapeHtml(targetsCount) + "</span>)";
+        if (headerNotesBtn) headerNotesBtn.innerHTML = "&#x1F4DD; " + escapeHtml(uiMessages.notes) + ' (<span id="notesCount">' + escapeHtml(notesCount) + "</span>)";
+      }
+
+      function getGamblingPageUrl(serverId) {
+        const srv = String(serverId || activeServerFilter || "tr").toLowerCase();
+        if (srv === "tr") return "https://omerta.com.tr/index.php#/gambling/gambling.php";
+        if (srv === "com") return "https://barafranca.com/index.php#/gambling/gambling.php";
+        if (srv === "nl") return "https://barafranca.nl/index.php#/gambling/gambling.php";
+        if (srv === "pt") return "https://omerta.pt/index.php#/gambling/gambling.php";
+        return "https://omerta.com.tr/index.php#/gambling/gambling.php";
+      }
+
+      function getCityPageUrl(serverId) {
+        const srv = String(serverId || activeServerFilter || "tr").toLowerCase();
+        if (srv === "tr") return "https://omerta.com.tr/index.php#/?module=City";
+        if (srv === "com") return "https://barafranca.com/#/?module=City";
+        if (srv === "nl") return "https://barafranca.nl/#/?module=City";
+        if (srv === "pt") return "https://omerta.pt/index.php#/?module=City";
+        return "https://omerta.com.tr/index.php#/?module=City";
+      }
+
+      function getMailPageUrl(serverId) {
+        const srv = String(serverId || activeServerFilter || "tr").toLowerCase();
+        if (srv === "tr") return "https://omerta.com.tr/index.php#/?module=Mail";
+        if (srv === "com") return "https://barafranca.com/#/?module=Mail";
+        if (srv === "nl") return "https://barafranca.nl/#/?module=Mail";
+        if (srv === "pt") return "https://omerta.pt/index.php#/?module=Mail";
+        return "https://omerta.com.tr/index.php#/?module=Mail";
+      }
+
+      function getActiveCityGiftState() {
+        if (!latestState || !Array.isArray(latestState.players)) return false;
+        const activeSrv = getActiveChatServerId();
+        return latestState.players.some(function(player) {
+          return String(player.serverId || "").toLowerCase() === activeSrv && player.cityGiftActive === true;
+        });
+      }
+
+      function getActiveMailUnreadCount() {
+        if (!latestState || !Array.isArray(latestState.players)) return 0;
+        const activeSrv = getActiveChatServerId();
+        const activePlayers = latestState.players.filter(function(player) {
+          return String(player.serverId || "").toLowerCase() === activeSrv;
+        });
+        const byClient = latestState.players.find(function(player) {
+          return String(player.serverId || "").toLowerCase() === activeSrv &&
+            myClientId &&
+            String(player.clientId || "") === String(myClientId || "");
+        });
+        if (byClient) {
+          return Number(byClient.mailUnreadCount) || 0;
+        }
+        const byPlayer = latestState.players.find(function(player) {
+          return String(player.serverId || "").toLowerCase() === activeSrv &&
+            myPlayerName &&
+            String(player.player || "") === String(myPlayerName || "");
+        });
+        if (byPlayer) {
+          return Number(byPlayer.mailUnreadCount) || 0;
+        }
+        if (activePlayers.length > 0) {
+          return activePlayers.reduce(function(maxCount, player) {
+            const count = Number(player.mailUnreadCount) || 0;
+            return count > maxCount ? count : maxCount;
+          }, 0);
+        }
+        return 0;
+      }
+
+      function updateCityShortcutButton() {
+        const cityBtn = document.getElementById("cityShortcutBtn");
+        if (!cityBtn) return;
+        const hasAlert = getActiveCityGiftState();
+        if (hasAlert) console.log("[CityGift] dashboard active=true");
+        cityBtn.classList.toggle("has-alert", hasAlert);
+        cityBtn.title = hasAlert ? "City gift active" : (uiMessages.city || "City");
+        cityBtn.innerHTML = escapeHtml(uiMessages.city || "City") + '<span class="city-shortcut-badge">&#x1F381;</span>';
+      }
+
+      const SHORTCUT_COOLDOWN_KEYS = {
+        "Heist": ["heist"],
+        "OC": ["organizedCrime", "organized_crime", "oc"],
+        "MOC": ["megaOrganizedCrime", "mega_organized_crime", "megaOc", "mega_oc", "megaoc"],
+        "Race": ["race"]
+      };
+
+      function isCooldownReady(value, serverTime) {
+        if (!value || typeof value !== "object") return false;
+        if (value.locked || value.censored) return false;
+        if (value.ready === true || Number(value.timeEnd) === 0) return true;
+        const timeEnd = Number(value.timeEnd);
+        if (!Number.isFinite(timeEnd) || timeEnd <= 0) return false;
+        return timeEnd <= serverTime;
+      }
+
+      function updateShortcutReadyBadges(state) {
+        const buttons = document.querySelectorAll(".chat-shortcut[data-template]");
+        if (!state || !Array.isArray(state.players) || !myPlayerName) {
+          buttons.forEach(function(btn) { btn.classList.remove("has-ready-badge"); });
+          return;
+        }
+        const nameLower = String(myPlayerName).toLowerCase();
+        const activeSrv = (activeServerFilter || "").toLowerCase();
+        let myEntry = (activeSrv && activeSrv !== "all")
+          ? state.players.find(function(p) { return String(p.player || "").toLowerCase() === nameLower && (p.serverId || "").toLowerCase() === activeSrv; })
+          : null;
+        if (!myEntry) {
+          myEntry = state.players.find(function(p) { return String(p.player || "").toLowerCase() === nameLower; });
+        }
+        console.log("[Badge] player=" + myPlayerName + " srv=" + activeSrv + " found=" + !!myEntry + " players=" + state.players.length);
+        if (!myEntry) { buttons.forEach(function(btn) { btn.classList.remove("has-ready-badge"); btn.classList.remove("has-locked-badge"); }); return; }
+        const srvTime = state.serverTime || 0;
+        buttons.forEach(function(btn) {
+          const label = btn.dataset.template;
+          const keys = SHORTCUT_COOLDOWN_KEYS[label];
+          if (!keys) { btn.classList.remove("has-ready-badge"); btn.classList.remove("has-locked-badge"); return; }
+          const raw = getCooldownRawValue(myEntry.cooldowns, keys);
+          const ready = isCooldownReady(raw, srvTime);
+          const locked = !!(raw && raw.locked);
+          btn.classList.toggle("has-ready-badge", ready);
+          btn.classList.toggle("has-locked-badge", locked && !ready);
+        });
+      }
+
+      function updateMailShortcutButton() {
+        const mailBtn = document.getElementById("headerMailBtn");
+        if (!mailBtn) return;
+        const unreadCount = Math.max(0, getActiveMailUnreadCount());
+        console.log("[Mail] dashboard value=", unreadCount);
+        mailBtn.style.display = "inline-flex";
+        mailBtn.innerHTML = escapeHtml(uiMessages.mailLabel || "Messages") + ' (<span id="mailUnreadCount">' + escapeHtml(String(unreadCount)) + "</span>)";
+        mailBtn.title = unreadCount > 0 ? unreadCount + " unread mail" : "No unread mail";
+      }
+
+      function applyLocaleTexts() {
+        if (privateChatTitle) privateChatTitle.textContent = uiMessages.privateChat || uiMessages.privateChatTitle;
+        if (privateRoomControlsLabel) privateRoomControlsLabel.textContent = uiMessages.controls;
+        if (privateChatEmptyState) privateChatEmptyState.textContent = uiMessages.emptyPrivate;
+        if (gameChatSyncLabel) gameChatSyncLabel.textContent = "";
+        const newRoomInput = document.getElementById("newRoomInput");
+        if (newRoomInput) newRoomInput.placeholder = uiMessages.roomName || uiMessages.roomPlaceholder;
+        if (gameGeneralInput) gameGeneralInput.placeholder = uiMessages.generalPlaceholder;
+        if (gameCrimesInput) gameCrimesInput.placeholder = uiMessages.crimesPlaceholder;
+        if (messageInput) messageInput.placeholder = uiMessages.privatePlaceholder;
+        if (document.getElementById("createRoomBtn")) document.getElementById("createRoomBtn").title = uiMessages.create;
+        if (document.getElementById("joinRoomBtn")) document.getElementById("joinRoomBtn").textContent = uiMessages.join;
+        const cityBtn = document.getElementById("cityShortcutBtn");
+        if (cityBtn && !cityBtn.classList.contains("has-alert")) {
+          cityBtn.innerHTML = escapeHtml(uiMessages.city || "City") + '<span class="city-shortcut-badge">&#x1F381;</span>';
+        }
+        updateMailShortcutButton();
+        if (gameGeneralSendBtn) gameGeneralSendBtn.textContent = uiMessages.send;
+        if (gameCrimesSendBtn) gameCrimesSendBtn.textContent = uiMessages.send;
+        if (privateChatSendBtn) privateChatSendBtn.textContent = uiMessages.sendMessage;
+        setChatAdminButtonLabel(isChatAdminOpen);
+        updateNotesButtonsText();
       }
 
       function escapeHtml(value) {
@@ -2301,15 +3277,23 @@ function renderDashboardHtml() {
         return div.innerHTML;
       }
 
+      function setChatAdminButtonLabel(isOpen = false) {
+        const btn = document.getElementById("chatAdminToggleBtn");
+        if (!btn) return;
+        btn.innerHTML = isOpen
+          ? "&#x1F6E1;&#xFE0F; " + escapeHtml(uiMessages.admin) + " (Open)"
+          : "&#x1F6E1;&#xFE0F; " + escapeHtml(uiMessages.admin);
+      }
+
       function parseTemplateChatMessage(value) {
         const normalized = String(value || "").trim();
         const messageWithoutIcon = normalized.startsWith("🔎") ? normalized.slice(2).trim() : normalized;
-        const match = messageWithoutIcon.match(/^(heist|race|oc|moc)\\s+(ariyor|looking for|procura|zoekt)\\s*\\(([^()]*)\\)\\s*$/i);
+        const match = messageWithoutIcon.match(/^(heist|heit|race|oc|moc)\\s+(ariyor|looking for|procura|zoekt)\\s*\\(([^()]*)\\)\\s*$/i);
         if (!match) {
           return null;
         }
         return {
-          keyword: match[1],
+          keyword: normalizeChatTemplateLabel(match[1]),
           verb: match[2],
           location: match[3],
         };
@@ -2321,7 +3305,7 @@ function renderDashboardHtml() {
 
       function renderTemplateChatMessage(templateData) {
         return '<span class="chat-template-icon">🔎</span>' +
-          '<span class="chat-keyword">' + escapeHtml(templateData.keyword) + '</span> ' +
+          '<span class="chat-keyword">' + escapeHtml(normalizeChatTemplateLabel(templateData.keyword)) + '</span> ' +
           escapeHtml(templateData.verb) + ' ' +
           '(<span class="chat-location">' + escapeHtml(String(templateData.location || "").toUpperCase()) + "</span>)";
       }
@@ -2375,7 +3359,7 @@ function renderDashboardHtml() {
         }
 
         if (value.ready === true || Number(value.timeEnd) === 0) {
-          return '<span class="ready" title="READY">✅</span>';
+          return '<span class="ready-dot" title="READY"></span>';
         }
 
         const timeEnd = Number(value.timeEnd);
@@ -2384,7 +3368,7 @@ function renderDashboardHtml() {
         }
 
         if (timeEnd <= serverTime) {
-          return '<span class="ready" title="READY">✅</span>';
+          return '<span class="ready-dot" title="READY"></span>';
         }
 
         const remaining = formatDuration(timeEnd - serverTime);
@@ -2508,10 +3492,10 @@ function renderDashboardHtml() {
         }
 
         if (isMyCharacterFilterActive) {
-          if (myPlayerName) {
-            result = result.filter((entry) => {
-              return String(entry.player || "").toLowerCase().trim() === myPlayerName.toLowerCase().trim();
-            });
+          if (myClientId) {
+            result = result.filter((entry) => entry.clientId === myClientId);
+          } else if (myPlayerName) {
+            result = result.filter((entry) => String(entry.player || "").toLowerCase().trim() === myPlayerName.toLowerCase().trim());
           } else {
             return [];
           }
@@ -2555,20 +3539,10 @@ function renderDashboardHtml() {
 
       function populateRankFilterOptions() {
         if (!rankFilterSelect) return;
-        rankFilterSelect.innerHTML = ['<option value="">All ranks</option>'].concat(
+        rankFilterSelect.innerHTML = ['<option value="">' + escapeHtml(t("allRanks")) + '</option>'].concat(
           rankFilterOptions.map(([value, label]) => '<option value="' + escapeHtml(value) + '">' + escapeHtml(label) + "</option>")
         ).join("");
       }
-
-      function updateObayToggleButton() {
-        obayToggleButton.textContent = isObayExpanded ? "Obay Auctions ▼" : "Obay Auctions ▶";
-        obayPanelBody.className = isObayExpanded ? "obay-panel-body" : "obay-panel-body collapsed";
-      }
-
-      updateObayToggleButton = ((original) => function() {
-        original();
-        obayToggleButton.textContent = isObayExpanded ? "Obay Auctions \u25BC" : "Obay Auctions \u25B6";
-      })(updateObayToggleButton);
 
       function updateServerCards(stateData) {
         const serverCounts = { tr: 0, com: 0, nl: 0, pt: 0 };
@@ -2745,6 +3719,7 @@ function renderDashboardHtml() {
         try {
           localStorage.setItem("omerta_active_server_filter", activeServerFilter);
         } catch(e){}
+        updateCityShortcutButton();
         updateActiveCardHighlight();
         if (isGeneralRoom(currentRoom)) {
           lastChatMsgTime = 0;
@@ -2752,8 +3727,8 @@ function renderDashboardHtml() {
         if (latestState) {
           renderPlayers(latestState);
         }
+        cachedSelfProgression = null;
         loadStateAndChat();
-        loadObay();
       }
 
       function renderNotesAndTargets(state) {
@@ -2766,6 +3741,7 @@ function renderDashboardHtml() {
         if (targetsCountEl) targetsCountEl.textContent = targets.length;
         const notesCountEl = document.getElementById('notesCount');
         if (notesCountEl) notesCountEl.textContent = notes.length;
+        updateNotesButtonsText();
 
         // Render Targets
         const targetsListContainer = document.getElementById('targetsListContainer');
@@ -2818,9 +3794,53 @@ function renderDashboardHtml() {
       function renderPlayers(state) {
         updateServerCards(state);
         updateActiveCardHighlight();
+        updateCityShortcutButton();
+        updateMailShortcutButton();
+        updateShortcutReadyBadges(state);
+
+        (function() {
+          const gamblingEl = document.getElementById("gamblingLink");
+          const statsChip = document.getElementById("playerStatsChip");
+          const moneyEl = document.getElementById("playerMoneyValue");
+          const bulletsEl = document.getElementById("playerBulletsValue");
+          if (gamblingEl) gamblingEl.href = getGamblingPageUrl(activeServerFilter);
+          if (statsChip) statsChip.style.display = "flex";
+          if (state && state.selfProgression && typeof state.selfProgression === "object") {
+            cachedSelfProgression = state.selfProgression;
+          } else if (state && state.players && (myClientId || myPlayerName)) {
+            const selfEntry = state.players.find(function(p) {
+              const srvMatch = (p.serverId || "").toLowerCase() === (activeServerFilter || "").toLowerCase();
+              if (myClientId && p.clientId === myClientId) return srvMatch;
+              if (myPlayerName) return srvMatch && String(p.player || "").toLowerCase() === myPlayerName.toLowerCase();
+              return false;
+            });
+            if (selfEntry && selfEntry.progression && typeof selfEntry.progression === "object") {
+              cachedSelfProgression = selfEntry.progression;
+            }
+          }
+          const prog = cachedSelfProgression || {};
+          if (moneyEl) moneyEl.textContent = prog.money || "-";
+          if (bulletsEl) bulletsEl.textContent = prog.bullets || "-";
+          const bankEl = document.getElementById("playerBankValue");
+          const healthEl = document.getElementById("playerHealthValue");
+          if (bankEl) bankEl.textContent = prog.bank || "-";
+          if (healthEl) healthEl.textContent = prog.health || "-";
+          const expFields = [
+            ["expPrisonEscape", prog.prisonEscape],
+            ["expCrimeAttempts", prog.crimeAttempts],
+            ["expCarTheft", prog.carTheftAttempts],
+            ["expWonRaces", prog.wonRaces],
+            ["expMurders", prog.murders],
+            ["expBulletsSpent", prog.bulletsSpent]
+          ];
+          expFields.forEach(function(pair) {
+            const el = document.getElementById(pair[0]);
+            if (el) el.textContent = pair[1] || "-";
+          });
+        })();
 
         if (myCharacterFilterBtn) {
-          myCharacterFilterBtn.textContent = myPlayerName ? "Character: " + myPlayerName : "Character: -";
+          myCharacterFilterBtn.textContent = t("character");
         }
 
         if (!state || !Array.isArray(state.players) || state.players.length === 0) {
@@ -2850,7 +3870,8 @@ function renderDashboardHtml() {
             const platingLabel = progression.platingLabel || "";
             const platingPercent = progression.platingPercent || "";
 
-            if (currentRoom.toLowerCase() === "general") {
+            const isMyEntry = entry.clientId && myClientId && entry.clientId === myClientId;
+            if (currentRoom.toLowerCase() === "general" && !isMyEntry) {
               progressionPercent = "***";
               activityPercent = "***";
             }
@@ -2879,12 +3900,19 @@ function renderDashboardHtml() {
             const profileTooltip = "Rank: " + rank;
             const playerProfileUrl = getPlayerProfileBaseUrl(entry.serverId) + encodeURIComponent(entry.player || "");
             const playerNameHtml = '<a class="text-cell player-name" href="' + escapeHtml(playerProfileUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(entry.player || "-") + "</a>";
+            const progressNumeric = Number.parseFloat(String(progressionPercent).replace("%", "").replace(",", "."));
+            const progressValue = Number.isFinite(progressNumeric)
+              ? Math.max(0, Math.min(100, progressNumeric))
+              : null;
+            const progressHtml = progressValue === null
+              ? '<span class="text-cell">' + escapeHtml(progressionPercent) + "</span>"
+              : '<div class="progress-cell"><div class="progress-bar"><div class="progress-bar-fill" style="width: ' + progressValue + '%;"></div></div><span class="progress-value">' + escapeHtml(progressionPercent) + "</span></div>";
 
             return '<tr class="' + rowClass + '">' +
               '<td title="' + (entry.offline ? "Offline" : "Online") + '">' + status + "</td>" +
               '<td title="' + escapeHtml(entry.player || "-") + '">' + playerNameHtml + "</td>" +
               '<td title="' + escapeHtml(profileTooltip) + '"><span class="text-cell rank-name">' + escapeHtml(rank) + "</span></td>" +
-              '<td title="' + escapeHtml(progressionPercent) + '">' + escapeHtml(progressionPercent) + "</td>" +
+              '<td title="' + escapeHtml(progressionPercent) + '">' + progressHtml + "</td>" +
               '<td title="' + escapeHtml(activityPercent) + '">' + escapeHtml(activityPercent) + "</td>" +
               '<td>' + platingHtml + '</td>' +
               cells +
@@ -2892,45 +3920,9 @@ function renderDashboardHtml() {
               "</tr>";
           });
 
-        cooldownTableBody.innerHTML = rows.join("");
+        const newHtml = rows.join("");
+        if (cooldownTableBody.innerHTML !== newHtml) cooldownTableBody.innerHTML = newHtml;
         renderNotesAndTargets(state);
-      }
-
-      function renderObay(data) {
-        if (!data || !Array.isArray(data.items) || data.items.length === 0) {
-          obayTableBody.innerHTML = '<tr><td colspan="5" class="muted">No Obay data yet. Open Obay auctions page with the extension enabled.</td></tr>';
-          obayMeta.textContent = "No Obay data loaded.";
-          return;
-        }
-
-        function formatObayItemName(name) {
-          const rawName = String(name || "");
-          const normalized = rawName.toLowerCase();
-          if (normalized.includes("pak met kogels")) {
-            return "Bullet";
-          }
-
-          return rawName || "-";
-        }
-
-        const rows = data.items.map((item) => {
-          const displayName = formatObayItemName(item.name);
-          const endValue = String(item.endTime || "-");
-          const showClick = endValue.toLowerCase() === "now";
-          const endCell = showClick
-            ? '<span class="inline-action"><span>' + escapeHtml(endValue) + '</span><a class="mini-link-button" href="https://barafranca.nl/#/?module=Obay&action=auctions" target="_blank" rel="noopener noreferrer">Click</a></span>'
-            : escapeHtml(endValue);
-          return "<tr>" +
-            '<td title="' + escapeHtml(item.name || "-") + '">' + escapeHtml(displayName) + "</td>" +
-            '<td title="' + escapeHtml(item.seller || "-") + '">' + escapeHtml(item.seller || "-") + "</td>" +
-            '<td title="' + escapeHtml(item.minimumBid || "-") + '">' + escapeHtml(item.minimumBid || "-") + "</td>" +
-            '<td title="' + escapeHtml(item.bidder || "-") + '">' + escapeHtml(item.bidder || "-") + "</td>" +
-            '<td title="' + escapeHtml(endValue) + '">' + endCell + "</td>" +
-            "</tr>";
-        });
-
-        obayTableBody.innerHTML = rows.join("");
-        obayMeta.textContent = "Updated by " + (data.updatedBy || "-") + " at " + formatClock(Number(data.updatedAt)) + ".";
       }
 
       function formatClock(timestamp) {
@@ -2983,15 +3975,65 @@ function renderDashboardHtml() {
         chatMessages.innerHTML = messages.map((message) => {
           const timeStr = formatClock(Number(message.createdAt));
 
-          // System notification messages (target dead/alive events)
+          // System notification messages
           if (message.system) {
+            if (message.type === 'target-add') {
+              const tName = escapeHtml(message.targetName || '');
+              const tAdder = escapeHtml(message.addedBy || '');
+              let adderSrv = activeServerFilter || 'tr';
+              if (latestState && Array.isArray(latestState.players)) {
+                const ae = latestState.players.find(function(p) { return p.player === message.addedBy; });
+                if (ae && ae.serverId) adderSrv = ae.serverId;
+              }
+              const tTargetUrl = getPlayerProfileBaseUrl(activeServerFilter || 'tr') + encodeURIComponent(message.targetName || '');
+              const tAdderUrl = getPlayerProfileBaseUrl(adderSrv) + encodeURIComponent(message.addedBy || '');
+              return '<div class="chat-item system-event" data-msg-id="' + (message.id || '') + '" style="' +
+                'display:flex;align-items:center;justify-content:center;gap:6px;' +
+                'margin:3px 0;padding:4px 10px;border-radius:7px;' +
+                'background:rgba(90,169,255,0.07);border:1px solid rgba(90,169,255,0.20);text-align:center;">' +
+                '<span style="font-size:11px;font-weight:400;color:var(--muted);">' +
+                '<a href="' + escapeHtml(tAdderUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-weight:400;text-decoration:none;">' + tAdder + '</a>' +
+                ' <span style="color:var(--muted);">' + escapeHtml(t("added")) + '</span> ' +
+                '&#x1F3AF; ' +
+                '<a href="' + escapeHtml(tTargetUrl) + '" target="_blank" rel="noopener noreferrer" style="color:#5aa9ff;font-weight:700;text-decoration:none;">' + tName + '</a>' +
+                ' <span style="color:var(--muted);">' + escapeHtml(t("asTarget")) + '</span>' +
+                '</span>' +
+                '<span style="font-size:9px;color:var(--muted);flex-shrink:0;">' + escapeHtml(timeStr) + '</span>' +
+                '</div>';
+            }
+            if (message.type === 'target-dead') {
+              const tName = escapeHtml(message.targetName || '');
+              const tAdder = escapeHtml(message.addedBy || '');
+              const tIsDead = !!message.isDead;
+              let adderSrv = activeServerFilter || 'tr';
+              if (latestState && Array.isArray(latestState.players)) {
+                const ae = latestState.players.find(function(p) { return p.player === message.addedBy; });
+                if (ae && ae.serverId) adderSrv = ae.serverId;
+              }
+              const tTargetUrl = getPlayerProfileBaseUrl(activeServerFilter || 'tr') + encodeURIComponent(message.targetName || '');
+              const tAdderUrl = getPlayerProfileBaseUrl(adderSrv) + encodeURIComponent(message.addedBy || '');
+              const nameColor = tIsDead ? '#c0392b' : '#27ae60';
+              const bgColor = tIsDead ? 'rgba(192,57,43,0.08)' : 'rgba(39,174,96,0.08)';
+              const borderColor = tIsDead ? 'rgba(192,57,43,0.25)' : 'rgba(39,174,96,0.25)';
+              const icon = tIsDead ? '\u2620\ufe0f' : '\u2705';
+              const statusLabel = tIsDead ? t('asDead') : t('asAlive');
+              return '<div class="chat-item system-event" data-msg-id="' + (message.id || '') + '" style="' +
+                'display:flex;align-items:center;justify-content:center;gap:6px;' +
+                'margin:3px 0;padding:4px 10px;border-radius:7px;' +
+                'background:' + bgColor + ';border:1px solid ' + borderColor + ';text-align:center;">' +
+                '<span style="font-size:11px;font-weight:400;color:var(--muted);">' +
+                '<a href="' + escapeHtml(tAdderUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-weight:400;text-decoration:none;">' + tAdder + '</a>' +
+                ' <span style="color:var(--muted);">' + escapeHtml(t("marked")) + '</span> ' +
+                icon + ' ' +
+                '<a href="' + escapeHtml(tTargetUrl) + '" target="_blank" rel="noopener noreferrer" style="color:' + nameColor + ';font-weight:700;text-decoration:none;">' + tName + '</a>' +
+                ' <span style="color:var(--muted);">' + statusLabel + '</span>' +
+                '</span>' +
+                '<span style="font-size:9px;color:var(--muted);flex-shrink:0;">' + escapeHtml(timeStr) + '</span>' +
+                '</div>';
+            }
             const isDead = String(message.message || '').includes('DEAD');
-            const sysBg = isDead
-              ? 'rgba(255,107,107,0.10)'
-              : 'rgba(51,209,122,0.10)';
-            const sysBorder = isDead
-              ? 'rgba(255,107,107,0.35)'
-              : 'rgba(51,209,122,0.35)';
+            const sysBg = isDead ? 'rgba(255,107,107,0.10)' : 'rgba(51,209,122,0.10)';
+            const sysBorder = isDead ? 'rgba(255,107,107,0.35)' : 'rgba(51,209,122,0.35)';
             const sysColor = isDead ? 'var(--red)' : 'var(--green)';
             return '<div class="chat-item system-event" data-msg-id="' + (message.id || '') + '" style="' +
               'display: flex; align-items: center; justify-content: center; gap: 6px;' +
@@ -3021,30 +4063,23 @@ function renderDashboardHtml() {
           const playerName = escapeHtml(message.player || "-");
           const playerProfileUrl = getPlayerProfileBaseUrl(playerServerId) + encodeURIComponent(message.player || "");
           const msgText = renderChatMessageText(rawMessageText);
+          const nickColor = isOwn ? "#98c379" : "#5aa9ff";
 
-          // Server badge next to player name
           const srvBadgeColor = { tr: '#e06c75', com: '#61afef', nl: '#e5c07b', pt: '#98c379' };
           const srvColor = srvBadgeColor[playerServerId] || 'var(--muted)';
-          const serverBadge = '<span style="font-size: 8px; font-weight: 800; color: ' + srvColor + '; opacity: 0.85; margin-right: 3px; vertical-align: middle; letter-spacing: 0.3px;">' + escapeHtml(playerServerId.toUpperCase()) + '</span>';
-          
-          const replyBtn = isOwn ? "" : '<button type="button" class="chat-reply-button" data-player="' + playerName + '">Yanitla</button>';
-          const pinText = message.pinned ? "📍 Unpin" : "📌 Pin";
-          const pinBtn = '<button type="button" class="chat-pin-button" data-msg-id="' + (message.id || "") + '">' + pinText + '</button>';
-          const chatActions = '<div class="chat-actions">' + replyBtn + (replyBtn ? " | " : "") + pinBtn + '</div>';
+          const serverBadge = '<span style="font-size:8px;font-weight:800;color:' + srvColor + ';opacity:0.85;flex-shrink:0;letter-spacing:0.3px;">' + escapeHtml(playerServerId.toUpperCase()) + '</span>';
 
-          const pinIndicator = message.pinned ? ' <span style="color: var(--yellow); font-size: 9px;" title="Pinned Message">📌</span>' : '';
-          
+          const pinText = message.pinned ? "📍" : "📌";
+          const pinBtn = '<button type="button" class="chat-pin-button" data-msg-id="' + (message.id || "") + '" title="' + (message.pinned ? "Unpin" : "Pin") + '">' + pinText + '</button>';
+          const replyBtn = isOwn ? "" : '<button type="button" class="chat-reply-button" data-player="' + playerName + '" title="Reply">↩</button>';
+
           return '<div class="chat-item ' + bubbleClass + '" data-msg-id="' + (message.id || "") + '">' +
-            '<div class="chat-content">' +
+            '<span class="chat-time">[' + escapeHtml(timeStr) + ']</span>' +
             serverBadge +
-            '<a class="chat-player" href="' + escapeHtml(playerProfileUrl) + '" target="_blank" rel="noopener noreferrer" title="Open profile">' + escapeHtml(playerName) + ':</a>' +
-            '<span class="chat-text">' + msgText + '</span>' +
-            pinIndicator +
-            '</div>' +
-            '<div class="chat-meta-row">' +
-            chatActions +
-            '<span class="chat-time">' + escapeHtml(timeStr) + '</span>' +
-            '</div>' +
+            '<a class="chat-player" href="' + escapeHtml(playerProfileUrl) + '" target="_blank" rel="noopener noreferrer" style="color:' + nickColor + ';">' + playerName + '</a>' +
+            '<span class="chat-text"> ' + msgText + '</span>' +
+            ' ' + pinBtn +
+            (replyBtn ? ' ' + replyBtn : '') +
             '</div>';
         }).join("");
 
@@ -3059,74 +4094,181 @@ function renderDashboardHtml() {
         }
       }
 
+      function formatGameChatTime(createdAt) {
+        const s = String(createdAt || "");
+        const spaceIdx = s.indexOf(" ");
+        if (spaceIdx === -1) return s.slice(0, 5);
+        const t = s.slice(spaceIdx + 1);
+        return t.length >= 5 ? t.slice(0, 5) : t;
+      }
+
+      function parseGiftMessage(s) {
+        var clean = s.replace(/<[^>]*>/g, "").trim();
+        var playerName = "";
+        var m1 = clean.match(/^(.+?)[ \t]+found[ \t]+a[ \t]+gift/i);
+        if (m1) playerName = m1[1].trim();
+        if (!playerName) {
+          var m2 = clean.match(/^(.+?)[ \t]+found[ \t]/i);
+          if (m2) playerName = m2[1].trim();
+        }
+        if (!playerName) {
+          var m3 = s.match(/user[.]php[?](?:[^"']*&)?name=([^"'& \t]+)/i);
+          if (m3) playerName = decodeURIComponent(m3[1]);
+        }
+        if (!playerName) {
+          var m4 = clean.match(/^([^ \t]+)/);
+          if (m4) playerName = m4[1];
+        }
+        var moneyMatch = clean.match(/[$]([0-9,]+)/);
+        var money = moneyMatch ? moneyMatch[1] : "";
+        var bulletsMatch = clean.match(/ and ([0-9,]+)/i);
+        var bullets = bulletsMatch ? bulletsMatch[1] : "";
+        var car = "";
+        var colonIdx = clean.indexOf(":");
+        var dollarIdx = clean.indexOf("$");
+        if (colonIdx !== -1 && dollarIdx > colonIdx) {
+          var carSection = clean.slice(colonIdx + 1, dollarIdx);
+          var carMatch = carSection.match(/([0-9][0-9,]*)/);
+          if (carMatch) car = carMatch[1];
+        }
+        return { playerName: playerName, car: car, money: money, bullets: bullets, clean: clean };
+      }
+
+      function parseDeathMessage(s) {
+        var plain = s.replace(/<[^>]*>/g, "").replace(/✝[ \t]*/g, "").trim();
+        var parts = plain.split(/[ \t]*-[ \t]*/);
+        var namePart = parts[0] ? parts[0].trim() : "";
+        var family = parts[1] ? parts[1].trim() : "";
+        var playerName = namePart;
+        var rank = "";
+        var rankMatch = namePart.match(/^(.+?)[ \t]*[(]([^)]+)[)][ \t]*$/);
+        if (rankMatch) {
+          playerName = rankMatch[1].trim();
+          rank = rankMatch[2].trim();
+        }
+        return { playerName: playerName, rank: rank, family: family };
+      }
+
       function renderGameChat(kind, messages) {
         const container = kind === "crimes" ? gameCrimesMessages : gameGeneralMessages;
         const caption = kind === "crimes" ? gameCrimesCaption : gameGeneralCaption;
         if (!container || !caption) return;
 
         const trackerKey = kind === "crimes" ? "crimes" : "general";
+        const seenIds = gameChatSeenIds[trackerKey];
         const currentSender = getChatSender();
         let hasNewMessage = false;
-        if (messages && messages.length > 0) {
-          const lastMsg = messages[messages.length - 1];
-          const lastTime = Number(lastMsg.createdAt) || 0;
-          if (gameChatLastSeen[trackerKey] > 0 && lastTime > gameChatLastSeen[trackerKey] && lastMsg.player !== currentSender) {
-            hasNewMessage = true;
-          }
-          gameChatLastSeen[trackerKey] = lastTime;
-        }
+
+        const newMessages = (messages || []).filter(function(msg) {
+          return msg && msg.id != null && !seenIds.has(String(msg.id));
+        });
 
         caption.textContent = getGameChatRoomLabel(kind);
-        container.innerHTML = (messages || []).map((message) => {
-          const timeStr = formatClock(Number(message.createdAt));
-          const isOwn = message.player === currentSender;
-          let playerServerId = activeServerFilter;
-          if (latestState && Array.isArray(latestState.players)) {
-            const stateEntry = latestState.players.find((p) => p.player === message.player);
-            if (stateEntry && stateEntry.serverId) {
-              playerServerId = stateEntry.serverId;
-            }
-          }
-          const playerProfileUrl = getPlayerProfileBaseUrl(playerServerId) + encodeURIComponent(message.player || "");
-          return '<div class="chat-item ' + (isOwn ? "own" : "other") + '">' +
-            '<div class="chat-content">' +
-            '<a class="chat-player" href="' + escapeHtml(playerProfileUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(message.player || "-") + ":</a>" +
-            '<span class="chat-text">' + renderChatMessageText(String(message.message || "")) + "</span>" +
-            "</div>" +
-            '<div class="chat-meta-row"><span class="chat-time">' + escapeHtml(timeStr) + "</span></div>" +
-            "</div>";
-        }).join("") || '<div class="chat-empty">No messages yet.</div>';
 
-        container.scrollTop = container.scrollHeight;
+        if (newMessages.length === 0) return;
+
+        const placeholder = container.querySelector(".chat-empty");
+        if (placeholder) placeholder.remove();
+
+        const isAtBottom = container.scrollHeight - container.clientHeight - container.scrollTop <= 20;
+        const profileBase = getPlayerProfileBaseUrl(lastGameChatServerId || activeServerFilter || "tr");
+
+        for (var i = 0; i < newMessages.length; i++) {
+          const msg = newMessages[i];
+          seenIds.add(String(msg.id));
+
+          const msgText = String(msg.message || "");
+          const isGift = msgText.includes("found a gift") || msgText.includes("fa-gift");
+          const isDeath = msgText.includes("✝") || msgText.includes("fa-cross");
+          const timeStr = formatGameChatTime(msg.created_at);
+
+          const el = document.createElement("div");
+          el.style.cssText = "font-size:11px;line-height:1.5;padding:1px 0;word-break:break-word;";
+
+          var tSpan = document.createElement("span");
+          tSpan.style.color = "#7f8794";
+          tSpan.style.fontSize = "9px";
+          tSpan.textContent = "[" + timeStr + "] ";
+
+          if (isGift) {
+            var gp = parseGiftMessage(msgText);
+            var giftName = gp.playerName || String(msg.user_name || "?");
+            el.style.color = "#f6c453";
+            el.style.fontStyle = "italic";
+            tSpan.style.color = "#f6c453";
+            el.appendChild(tSpan);
+            el.appendChild(document.createTextNode("🎁 "));
+            var gNameSpan = document.createElement("span");
+            gNameSpan.style.fontWeight = "700";
+            gNameSpan.textContent = giftName;
+            el.appendChild(gNameSpan);
+            el.appendChild(document.createTextNode(" found a gift"));
+            if (gp.car) {
+              el.appendChild(document.createTextNode(" 🚗 "));
+              var carI = document.createElement("i"); carI.textContent = "x" + gp.car; el.appendChild(carI);
+            }
+            if (gp.money) {
+              el.appendChild(document.createTextNode("  💵 "));
+              var monI = document.createElement("i"); monI.textContent = gp.money; el.appendChild(monI);
+            }
+            if (gp.bullets) {
+              el.appendChild(document.createTextNode(" and 💥 "));
+              var bulI = document.createElement("i"); bulI.textContent = gp.bullets; el.appendChild(bulI);
+              el.appendChild(document.createTextNode(" bullet"));
+            }
+            if (!gp.car && !gp.money && !gp.bullets) {
+              el.appendChild(document.createTextNode(" " + gp.clean));
+            }
+
+          } else if (isDeath) {
+            var dp = parseDeathMessage(msgText);
+            el.style.color = "#e05c5c";
+            el.appendChild(tSpan);
+            tSpan.style.color = "#c4535a";
+            el.appendChild(document.createTextNode("💀 "));
+            if (dp.playerName) {
+              var dLink = document.createElement("a");
+              dLink.href = profileBase + encodeURIComponent(dp.playerName);
+              dLink.target = "_blank";
+              dLink.rel = "noopener noreferrer";
+              dLink.style.color = "#e05c5c";
+              dLink.style.fontWeight = "700";
+              dLink.style.textDecoration = "none";
+              dLink.style.cursor = "pointer";
+              dLink.textContent = dp.playerName;
+              el.appendChild(dLink);
+            }
+            if (dp.rank) el.appendChild(document.createTextNode(" (" + dp.rank + ")"));
+            if (dp.family) el.appendChild(document.createTextNode(" | " + dp.family));
+
+          } else {
+            el.appendChild(tSpan);
+            var nLink = document.createElement("a");
+            nLink.href = profileBase + encodeURIComponent(String(msg.user_name || ""));
+            nLink.target = "_blank";
+            nLink.rel = "noopener noreferrer";
+            nLink.style.color = "#5aa9ff";
+            nLink.style.fontWeight = "700";
+            nLink.style.textDecoration = "none";
+            nLink.style.cursor = "pointer";
+            nLink.textContent = String(msg.user_name || "-");
+            el.appendChild(nLink);
+            el.appendChild(document.createTextNode(" " + msgText));
+          }
+
+          container.appendChild(el);
+
+          if (String(msg.user_name || "") !== currentSender) {
+            hasNewMessage = true;
+          }
+        }
+
+        if (isAtBottom) {
+          container.scrollTop = container.scrollHeight;
+        }
+
         if (hasNewMessage && isChatSoundEnabled && (document.hidden || !document.hasFocus())) {
           playNotificationSound();
-        }
-      }
-
-      async function loadObay() {
-        if (!currentRoom || !isValidRoom(currentRoom)) {
-          obayTableBody.innerHTML = '<tr><td colspan="5" class="muted">No Obay data yet. Open Obay auctions page with the extension enabled.</td></tr>';
-          obayMeta.textContent = "No Obay data loaded.";
-          return;
-        }
-
-        if (userRoomStatus !== "owner" && userRoomStatus !== "member") {
-          return;
-        }
-
-        try {
-          const targetSrv = activeServerFilter === "ALL" ? "nl" : activeServerFilter;
-          const response = await fetch("/api/obay?room=" + encodeURIComponent(currentRoom) + "&clientId=" + encodeURIComponent(myClientId) + "&serverId=" + encodeURIComponent(targetSrv));
-          const data = await response.json();
-
-          if (!response.ok) {
-            throw new Error(data.error || "Obay request failed");
-          }
-
-          renderObay(data);
-        } catch (error) {
-          obayMeta.textContent = error.message;
-          obayTableBody.innerHTML = '<tr><td colspan="5" class="muted">Could not load Obay data.</td></tr>';
         }
       }
 
@@ -3134,17 +4276,17 @@ function renderDashboardHtml() {
         if (!currentRoom) {
           roomTitle.textContent = FIXED_ROOM;
           chatPanelTitle.textContent = getChatRoomLabel(FIXED_ROOM);
-          stateMeta.textContent = "Online: 0";
-          chatMeta.textContent = "No messages loaded.";
+          if (stateMeta) stateMeta.textContent = "";
+          chatMeta.textContent = t("noMessagesLoaded");
           cooldownTableBody.innerHTML = '<tr><td colspan="20" class="muted">No room selected.</td></tr>';
-          chatMessages.innerHTML = '<div class="chat-empty">Select a room to load chat.</div>';
+          chatMessages.innerHTML = '<div class="chat-empty">' + escapeHtml(t("selectRoomToChat")) + '</div>';
           return;
         }
 
         if (!isValidRoom(currentRoom)) {
           roomTitle.textContent = currentRoom;
           chatPanelTitle.textContent = getChatRoomLabel(currentRoom);
-          stateMeta.textContent = "Online: 0";
+          if (stateMeta) stateMeta.textContent = "";
           cooldownTableBody.innerHTML = '<tr><td colspan="20" class="muted">Invalid room name.</td></tr>';
           chatMessages.innerHTML = '<div class="chat-empty">Invalid room name.</div>';
           return;
@@ -3154,6 +4296,22 @@ function renderDashboardHtml() {
           const statusRes = await fetch("/api/rooms/status?room=" + encodeURIComponent(currentRoom) + "&clientId=" + encodeURIComponent(myClientId));
           const statusData = await statusRes.json();
           userRoomStatus = statusData.status || "none";
+
+          // Auto-join: if status is none and we have a player name, try request-join
+          // Server will approve immediately if player name matches room owner
+          if (userRoomStatus === "none" && myClientId && myPlayerName) {
+            const autoRes = await fetch("/api/rooms/request-join", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ room: currentRoom, clientId: myClientId, player: myPlayerName })
+            });
+            const autoData = await autoRes.json();
+            if (autoRes.ok && autoData.ok && (autoData.role === "owner" || autoData.role === "member")) {
+              userRoomStatus = autoData.role;
+            } else if (autoRes.ok && autoData.ok) {
+              userRoomStatus = autoData.role || "pending";
+            }
+          }
 
           const layoutEl = document.querySelector(".layout");
           const unauthorizedEl = document.getElementById("unauthorizedView");
@@ -3167,7 +4325,7 @@ function renderDashboardHtml() {
             layoutEl.style.gridTemplateColumns = "1fr";
             unauthorizedEl.style.display = "none";
             cooldownsPanel.style.display = "block";
-            obayPanel.style.display = "block";
+            if (obayPanel) obayPanel.style.display = "block";
             chatPanel.style.display = "flex";
             const gameChatsPanel = document.getElementById("gameChatsPanel");
             if (gameChatsPanel) gameChatsPanel.style.display = "flex";
@@ -3204,7 +4362,7 @@ function renderDashboardHtml() {
               chatAdminPanel.style.display = "none";
             }
 
-            const stateResponse = await fetch("/api/state?room=" + encodeURIComponent(currentRoom) + "&clientId=" + encodeURIComponent(myClientId));
+            const stateResponse = await fetch("/api/state?room=" + encodeURIComponent(currentRoom) + "&clientId=" + encodeURIComponent(myClientId) + "&serverId=" + encodeURIComponent(activeServerFilter || ""));
             const stateData = await stateResponse.json();
 
             if (!stateResponse.ok) {
@@ -3228,7 +4386,7 @@ function renderDashboardHtml() {
             }
 
             roomTitle.textContent = currentRoom;
-            stateMeta.textContent = "Online: " + stateData.players.filter((player) => !player.offline).length;
+            if (stateMeta) stateMeta.textContent = "";
 
             const servers = ["tr", "com", "nl", "pt"];
             if (shouldAutoSelectServer || !servers.includes(activeServerFilter)) {
@@ -3266,28 +4424,48 @@ function renderDashboardHtml() {
             }
 
             renderPlayers(stateData);
-            if (gameChatServerMeta) {
-              gameChatServerMeta.textContent = "Chat Server: " + getActiveChatServerId().toUpperCase() + " (Sync)";
+            const activeSrv = getActiveChatServerId();
+            if (activeSrv !== lastGameChatServerId) {
+              lastGameChatServerId = activeSrv;
+              gameChatSeenIds.general.clear();
+              gameChatSeenIds.crimes.clear();
+              gameChatServerTimeBase = null;
+              if (gameChatClockInterval) { clearInterval(gameChatClockInterval); gameChatClockInterval = null; }
+              if (gameChatServerMeta) gameChatServerMeta.textContent = "";
+              if (gameGeneralMessages) gameGeneralMessages.innerHTML = '<div class="chat-empty">' + escapeHtml(t("loadingGeneralChat")) + '</div>';
+              if (gameCrimesMessages) gameCrimesMessages.innerHTML = '<div class="chat-empty">' + escapeHtml(t("loadingCrimesChat")) + '</div>';
             }
 
-            const generalChatResponse = await fetch("/api/chat?room=" + encodeURIComponent(getGameChatRoomKey("general")) + "&clientId=" + encodeURIComponent(myClientId));
-            const generalChatData = await generalChatResponse.json();
-            if (!generalChatResponse.ok) {
-              throw new Error(generalChatData.error || "General chat request failed");
-            }
-            renderGameChat("general", generalChatData.messages || []);
+            try {
+              const generalChatRes = await fetch("/api/game-chat?serverId=" + encodeURIComponent(activeSrv) + "&kind=general");
+              if (generalChatRes.ok) {
+                const generalChatData = await generalChatRes.json();
+                if (generalChatData.serverTime && generalChatData.serverTimeSyncedAt) {
+                  gameChatServerTimeBase = { serverTime: generalChatData.serverTime, serverTimeSyncedAt: generalChatData.serverTimeSyncedAt, serverId: activeSrv };
+                  if (!gameChatClockInterval) {
+                    gameChatClockInterval = setInterval(function() {
+                      if (gameChatServerMeta && gameChatServerTimeBase) {
+                        gameChatServerMeta.textContent = computeServerClock(gameChatServerTimeBase.serverTime, gameChatServerTimeBase.serverTimeSyncedAt);
+                      }
+                    }, 1000);
+                  }
+                }
+                renderGameChat("general", generalChatData.messages || []);
+              }
+            } catch (_gcE) {}
 
-            const crimesChatResponse = await fetch("/api/chat?room=" + encodeURIComponent(getGameChatRoomKey("crimes")) + "&clientId=" + encodeURIComponent(myClientId));
-            const crimesChatData = await crimesChatResponse.json();
-            if (!crimesChatResponse.ok) {
-              throw new Error(crimesChatData.error || "Crimes chat request failed");
-            }
-            renderGameChat("crimes", crimesChatData.messages || []);
+            try {
+              const crimesChatRes = await fetch("/api/game-chat?serverId=" + encodeURIComponent(activeSrv) + "&kind=crimes");
+              if (crimesChatRes.ok) {
+                const crimesChatData = await crimesChatRes.json();
+                renderGameChat("crimes", crimesChatData.messages || []);
+              }
+            } catch (_gcE) {}
 
             chatPanelTitle.textContent = isGeneralRoom(currentRoom) ? "Portal General" : currentRoom;
             if (isGeneralRoom(currentRoom)) {
-              chatMeta.textContent = "Portal General controls the player table only.";
-              chatMessages.innerHTML = '<div class="chat-empty">Portal General has no private chat panel.</div>';
+              chatMeta.textContent = t("portalGeneralControlsOnly");
+              chatMessages.innerHTML = '<div class="chat-empty">' + escapeHtml(t("noPrivateChatPanel")) + '</div>';
               setPrivateChatIdleState(true);
             } else {
               const chatRoomKey = getChatRoomKey(currentRoom);
@@ -3305,7 +4483,7 @@ function renderDashboardHtml() {
             layoutEl.style.gridTemplateColumns = "1fr";
             unauthorizedEl.style.display = "block";
             cooldownsPanel.style.display = "none";
-            obayPanel.style.display = "none";
+            if (obayPanel) obayPanel.style.display = "none";
             chatPanel.style.display = "none";
             const gameChatsPanel = document.getElementById("gameChatsPanel");
             if (gameChatsPanel) gameChatsPanel.style.display = "none";
@@ -3352,7 +4530,7 @@ function renderDashboardHtml() {
           latestState = null;
           roomTitle.textContent = currentRoom || FIXED_ROOM;
           chatPanelTitle.textContent = isGeneralRoom(currentRoom || FIXED_ROOM) ? "Portal General" : getChatRoomLabel(currentRoom || FIXED_ROOM);
-          stateMeta.textContent = "Failed to load room data.";
+          if (stateMeta) stateMeta.textContent = "";
           cooldownTableBody.innerHTML = '<tr><td colspan="20" class="muted">Could not load state.</td></tr>';
           chatMessages.innerHTML = '<div class="chat-empty">Could not load chat.</div>';
           chatMeta.textContent = error.message;
@@ -3500,14 +4678,8 @@ function renderDashboardHtml() {
           clearInterval(pollTimer);
         }
 
-        if (obayPollTimer) {
-          clearInterval(obayPollTimer);
-        }
-
         loadStateAndChat();
-        loadObay();
         pollTimer = window.setInterval(loadStateAndChat, 1000);
-        obayPollTimer = window.setInterval(loadObay, 5000);
       }
 
       function applyRoom(room) {
@@ -3524,10 +4696,14 @@ function renderDashboardHtml() {
       roomInput.readOnly = true;
       applyRoomButton.disabled = true;
       applyRoomButton.textContent = "Locked";
+      applyLocaleTexts();
+      applyLanguage();
       populateRankFilterOptions();
+      applyLanguage();
       updateRankSortButton();
-      updateObayToggleButton();
       updateSoundButtonState();
+      const initialSoundBtn = document.getElementById("chatSoundToggleBtn");
+      if (initialSoundBtn) initialSoundBtn.textContent = isChatSoundEnabled ? uiMessages.soundOn : uiMessages.soundOff;
 
       // Server Filter dropdown removed. Filter state is managed by the sidebar server cards.
 
@@ -3545,13 +4721,28 @@ function renderDashboardHtml() {
       if (dashboardConnectBtn) {
         dashboardConnectBtn.addEventListener("click", () => {
           dashboardConnectBtn.disabled = true;
-          stateMeta.textContent = "Connecting open Omerta tabs...";
+          if (stateMeta) stateMeta.textContent = "";
           window.postMessage({ type: "OMERTA_CONNECT_ALL" }, "*");
           window.setTimeout(() => {
             if (dashboardConnectBtn) {
               dashboardConnectBtn.disabled = false;
             }
           }, 2500);
+        });
+      }
+
+
+      const cityShortcutBtn = document.getElementById("cityShortcutBtn");
+      if (cityShortcutBtn) {
+        cityShortcutBtn.addEventListener("click", () => {
+          window.open(getCityPageUrl(getActiveChatServerId()), "_blank");
+        });
+      }
+
+      const headerMailBtn = document.getElementById("headerMailBtn");
+      if (headerMailBtn) {
+        headerMailBtn.addEventListener("click", () => {
+          window.open(getMailPageUrl(getActiveChatServerId()), "_blank");
         });
       }
 
@@ -3609,6 +4800,8 @@ function renderDashboardHtml() {
           localStorage.setItem("omerta_chat_sound_enabled", String(isChatSoundEnabled));
         } catch(e){}
         updateSoundButtonState();
+        const soundBtn = document.getElementById("chatSoundToggleBtn");
+        if (soundBtn) soundBtn.textContent = isChatSoundEnabled ? uiMessages.soundOn : uiMessages.soundOff;
         if (isChatSoundEnabled) {
           playNotificationSound();
         }
@@ -3660,28 +4853,20 @@ function renderDashboardHtml() {
         });
       }
 
-      obayToggleButton.addEventListener("click", () => {
-        isObayExpanded = !isObayExpanded;
-        updateObayToggleButton();
-      });
-
       chatForm.addEventListener("submit", async (event) => {
         event.preventDefault();
-        chatFeedback.className = "feedback";
-        chatFeedback.textContent = "";
+        setConnectionIndicator(chatFeedback, isConnected && myPlayerName ? "online" : "offline", myPlayerName ? "Connected as " + myPlayerName : "Not connected");
 
         let message = messageInput.value.trim();
         message = message.replace(/\s*\(\)/g, "").trim();
 
         if (!isConnected || !myPlayerName) {
-          chatFeedback.className = "feedback error";
-          chatFeedback.textContent = "Open Omerta and wait for extension to connect.";
+          setConnectionIndicator(chatFeedback, "error", "Open Omerta and wait for extension to connect.");
           return;
         }
 
         if (!message) {
-          chatFeedback.className = "feedback error";
-          chatFeedback.textContent = "Message cannot be empty.";
+          setConnectionIndicator(chatFeedback, "error", "Message cannot be empty.");
           return;
         }
 
@@ -3706,13 +4891,10 @@ function renderDashboardHtml() {
 
           clearActiveTemplateState();
           messageInput.value = "";
-          chatFeedback.className = "feedback";
-          chatFeedback.textContent = "";
           updateChatFormState();
           loadStateAndChat();
         } catch (error) {
-          chatFeedback.className = "feedback error";
-          chatFeedback.textContent = error.message || "Message send failed";
+          setConnectionIndicator(chatFeedback, "error", error.message || "Message send failed");
         }
       });
 
@@ -3730,47 +4912,55 @@ function renderDashboardHtml() {
         });
       }
 
+      if (gameGeneralInput) {
+        gameGeneralInput.addEventListener("keydown", function(e) {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (gameGeneralForm) gameGeneralForm.requestSubmit();
+          }
+        });
+      }
+
+      if (gameCrimesInput) {
+        gameCrimesInput.addEventListener("keydown", function(e) {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (gameCrimesForm) gameCrimesForm.requestSubmit();
+          }
+        });
+      }
+
       function getChatSender() {
         return myPlayerName || "";
       }
 
       async function sendGameChatMessage(kind, inputEl, feedbackEl) {
         if (!inputEl || !feedbackEl) return;
-        feedbackEl.className = "feedback";
-        feedbackEl.textContent = "";
+        setConnectionIndicator(feedbackEl, isConnected && myPlayerName ? "online" : "offline", myPlayerName ? "Connected as " + myPlayerName : "Not connected");
         let message = inputEl.value.trim();
         message = message.replace(/\s*\(\)/g, "").trim();
         if (!isConnected || !myPlayerName) {
-          feedbackEl.className = "feedback error";
-          feedbackEl.textContent = "Open Omerta and wait for extension to connect.";
+          setConnectionIndicator(feedbackEl, "error", "Open Omerta and wait for extension to connect.");
           return;
         }
         if (!message) {
-          feedbackEl.className = "feedback error";
-          feedbackEl.textContent = "Message cannot be empty.";
+          setConnectionIndicator(feedbackEl, "error", "Message cannot be empty.");
           return;
         }
         try {
-          const response = await fetch("/api/chat", {
+          const response = await fetch("/api/game-chat-outbox", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              room: getGameChatRoomKey(kind),
-              player: myPlayerName,
-              clientId: myClientId,
-              message
-            })
+            body: JSON.stringify({ serverId: getActiveChatServerId(), kind, message })
           });
           const resData = await response.json().catch(() => ({ ok: false, error: "Invalid response" }));
           if (!response.ok || !resData.ok) {
             throw new Error(resData.error || "Message send failed");
           }
           inputEl.value = "";
-          feedbackEl.textContent = "";
-          loadStateAndChat();
+          setConnectionIndicator(feedbackEl, "online", "Sending...");
         } catch (error) {
-          feedbackEl.className = "feedback error";
-          feedbackEl.textContent = error.message || "Message send failed";
+          setConnectionIndicator(feedbackEl, "error", error.message || "Message send failed");
         }
       }
 
@@ -3792,6 +4982,44 @@ function renderDashboardHtml() {
         return getChatTemplateText(getActiveChatServerId(), label);
       }
 
+      function normalizeChatTemplateLabel(label) {
+        const normalizedLabel = String(label || "").trim().toLowerCase();
+        if (normalizedLabel === "heist" || normalizedLabel === "heit") return "Heist";
+        if (normalizedLabel === "race") return "Race";
+        if (normalizedLabel === "oc") return "OC";
+        if (normalizedLabel === "moc") return "MOC";
+        return String(label || "").trim() || "Heist";
+      }
+
+      function getChatTemplateText(serverId, label) {
+        const normalizedServerId = String(serverId || "").trim().toLowerCase();
+        const safeLabel = normalizeChatTemplateLabel(label);
+        if (normalizedServerId === "com") {
+          return "🔎 " + safeLabel + " Looking for ()";
+        }
+        if (normalizedServerId === "pt") {
+          return "🔎 " + safeLabel + " Procura ()";
+        }
+        if (normalizedServerId === "nl") {
+          return "🔎 " + safeLabel + " Zoekt ()";
+        }
+        return "🔎 " + safeLabel + " Arıyor ()";
+      }
+
+      function parseTemplateChatMessage(value) {
+        const normalized = String(value || "").trim();
+        const messageWithoutIcon = normalized.replace(/^🔎\s*/u, "").replace(/^ğŸ”\s*/, "").trim();
+        const match = messageWithoutIcon.match(/^(heist|race|oc|moc)\s+(arıyor|ariyor|looking for|procura|zoekt)\s*\(([^()]*)\)\s*$/iu);
+        if (!match) {
+          return null;
+        }
+        return {
+          keyword: normalizeChatTemplateLabel(match[1]),
+          verb: match[2],
+          location: match[3],
+        };
+      }
+
       function createTemplateState(template) {
         const openIndex = template.indexOf("(");
         const closeIndex = template.lastIndexOf(")");
@@ -3804,8 +5032,68 @@ function renderDashboardHtml() {
         };
       }
 
+      function normalizeChatTemplateLabel(label) {
+        const normalizedLabel = String(label || "").trim().toLowerCase();
+        if (normalizedLabel === "heist" || normalizedLabel === "heit") return "Heist";
+        if (normalizedLabel === "race") return "Race";
+        if (normalizedLabel === "oc") return "OC";
+        if (normalizedLabel === "moc") return "MOC";
+        return String(label || "").trim() || "Heist";
+      }
+
+      function getChatTemplateText(serverId, label) {
+        const normalizedServerId = String(serverId || "").trim().toLowerCase();
+        const safeLabel = normalizeChatTemplateLabel(label);
+        const icon = "\uD83D\uDD0E";
+        if (normalizedServerId === "com") {
+          return icon + " " + safeLabel + " Looking for ()";
+        }
+        if (normalizedServerId === "pt") {
+          return icon + " " + safeLabel + " Procura ()";
+        }
+        if (normalizedServerId === "nl") {
+          return icon + " " + safeLabel + " Zoekt ()";
+        }
+        return icon + " " + safeLabel + " Ar\u0131yor ()";
+      }
+
+      function parseTemplateChatMessage(value) {
+        const normalized = String(value || "").trim();
+        const messageWithoutIcon = normalized
+          .replace(/^\u{1F50E}\s*/u, "")
+          .replace(/^ğŸ”\s*/u, "")
+          .replace(/^ÄŸÅ¸â€Â\s*/u, "")
+          .trim();
+        const match = messageWithoutIcon.match(/^(heist|heit|race|oc|moc)\s+(ar\u0131yor|ariyor|arÄ±yor|search|looking for|procura|zoekt)\s*\(([^()]*)\)\s*$/iu);
+        if (!match) {
+          return null;
+        }
+        return {
+          keyword: normalizeChatTemplateLabel(match[1]),
+          verb: match[2],
+          location: match[3],
+        };
+      }
+
       function clearActiveTemplateState() {
         activeTemplateState = null;
+        document.querySelectorAll(".chat-shortcut[data-template]").forEach(function(btn) {
+          btn.classList.remove("active-template");
+        });
+      }
+
+      function normalizeLegacyTemplateText(value) {
+        return String(value || "")
+          .replace(/\bHeit\b/giu, "Heist")
+          .replace(/\bAriyor\b/giu, "Ar\u0131yor");
+      }
+
+      function renderChatMessageText(value) {
+        const templateData = parseTemplateChatMessage(value);
+        if (templateData) {
+          return renderTemplateChatMessage(templateData);
+        }
+        return escapeHtml(value);
       }
 
       function syncTemplateMessageInput(cursorPosition) {
@@ -3837,8 +5125,18 @@ function renderDashboardHtml() {
       }
 
       window.insertChatTemplate = function(label) {
+        if (activeTemplateState && activeTemplateState.label === label) {
+          clearActiveTemplateState();
+          messageInput.value = "";
+          updateChatFormState();
+          return;
+        }
         const template = buildChatTemplate(label);
         activeTemplateState = createTemplateState(template);
+        if (activeTemplateState) activeTemplateState.label = label;
+        document.querySelectorAll(".chat-shortcut[data-template]").forEach(function(btn) {
+          btn.classList.toggle("active-template", btn.dataset.template === label);
+        });
         messageInput.value = template;
         messageInput.focus();
         syncTemplateMessageInput(template.indexOf("(") + 1);
@@ -3857,23 +5155,19 @@ function renderDashboardHtml() {
         const sendBtn = chatForm.querySelector("button[type='submit']");
         const emojiBtn = document.getElementById("emojiButton");
         const shortcutButtons = document.querySelectorAll(".chat-shortcut");
-        const gameGeneralSendBtn = gameGeneralForm ? gameGeneralForm.querySelector("button[type='submit']") : null;
-        const gameCrimesSendBtn = gameCrimesForm ? gameCrimesForm.querySelector("button[type='submit']") : null;
-        const canUsePrivateChat = isConnected && myPlayerName && !isGeneralRoom(currentRoom);
+        const canUsePrivateChat = isConnected && myPlayerName;
         if (canUsePrivateChat) {
           messageInput.disabled = false;
           if (sendBtn) sendBtn.disabled = false;
           if (emojiBtn) emojiBtn.disabled = false;
           shortcutButtons.forEach((button) => { button.disabled = false; });
-          chatFeedback.className = "feedback success";
-          chatFeedback.textContent = "Connected as " + myPlayerName;
+          setConnectionIndicator(chatFeedback, "online", "Connected as " + myPlayerName);
         } else {
           messageInput.disabled = true;
           if (sendBtn) sendBtn.disabled = true;
           if (emojiBtn) emojiBtn.disabled = true;
           shortcutButtons.forEach((button) => { button.disabled = true; });
-          chatFeedback.className = "feedback error";
-          chatFeedback.textContent = isGeneralRoom(currentRoom) ? "Portal General has no private chat." : "Open Omerta and wait for extension to connect.";
+          setConnectionIndicator(chatFeedback, "error", "Open Omerta and wait for extension to connect.");
         }
 
         const canUseGameChat = isConnected && myPlayerName;
@@ -3881,8 +5175,12 @@ function renderDashboardHtml() {
         if (gameCrimesInput) gameCrimesInput.disabled = !canUseGameChat;
         if (gameGeneralSendBtn) gameGeneralSendBtn.disabled = !canUseGameChat;
         if (gameCrimesSendBtn) gameCrimesSendBtn.disabled = !canUseGameChat;
-        if (gameGeneralFeedback && !canUseGameChat) gameGeneralFeedback.textContent = "Connect to chat.";
-        if (gameCrimesFeedback && !canUseGameChat) gameCrimesFeedback.textContent = "Connect to chat.";
+        if (gameGeneralFeedback) {
+          setConnectionIndicator(gameGeneralFeedback, canUseGameChat ? "online" : "offline", canUseGameChat ? "Connected as " + myPlayerName : "Not connected");
+        }
+        if (gameCrimesFeedback) {
+          setConnectionIndicator(gameCrimesFeedback, canUseGameChat ? "online" : "offline", canUseGameChat ? "Connected as " + myPlayerName : "Not connected");
+        }
       }
 
       // Handshake and postMessage coordination with extension
@@ -3901,6 +5199,9 @@ function renderDashboardHtml() {
             updateNicknameCards();
           }
           
+          if (data.clientId && !myClientId) {
+            myClientId = data.clientId;
+          }
           const isActiveServer = responseServerId === getActiveChatServerId();
           if (isActiveServer) {
             isConnected = data.connected;
@@ -3912,6 +5213,10 @@ function renderDashboardHtml() {
               if (latestState) {
                 renderPlayers(latestState);
               }
+              // Re-check room access when clientId becomes available
+              if (myClientId && myClientId !== oldClientId) {
+                loadStateAndChat();
+              }
             }
           }
           
@@ -3922,10 +5227,8 @@ function renderDashboardHtml() {
           if (dashboardConnectBtn) {
             dashboardConnectBtn.disabled = false;
           }
-          if (data.ok) {
-            stateMeta.textContent = "Connect sent to " + (Number(data.count) || 0) + " tab(s).";
-          } else {
-            stateMeta.textContent = data.error || "Connect failed.";
+          if (!data.ok) {
+            if (stateMeta) stateMeta.textContent = "";
           }
         }
       });
@@ -3942,6 +5245,13 @@ function renderDashboardHtml() {
         window.postMessage({ type: "OMERTA_GET_IDENTITY", serverId: srv }, "*");
       });
       updateNicknameCards();
+
+      // Auto-connect: retry a few times so tabs that are slow to initialize also get picked up
+      [800, 4000, 10000].forEach(function(delay) {
+        window.setTimeout(function() {
+          window.postMessage({ type: "OMERTA_SEND_NOW_ALL" }, "*");
+        }, delay);
+      });
 
       // Custom Emoji Panel interaction
       const emojiButton = document.getElementById("emojiButton");
@@ -4165,6 +5475,16 @@ function renderDashboardHtml() {
           const data = await res.json();
           if (res.ok && data.ok) {
             input.value = "";
+            // Auto-close the targets panel after successfully adding
+            const notesPanel = document.getElementById('notesPanel');
+            if (notesPanel && notesPanel.style.display !== 'none') {
+              notesPanel.style.display = 'none';
+              activeNotesTab = null;
+              const hTBtn = document.getElementById('headerTargetsBtn');
+              const hNBtn = document.getElementById('headerNotesBtn');
+              if (hTBtn) { hTBtn.style.borderColor = 'var(--border)'; hTBtn.style.color = 'var(--muted)'; }
+              if (hNBtn) { hNBtn.style.borderColor = 'var(--border)'; hNBtn.style.color = 'var(--muted)'; }
+            }
             loadStateAndChat();
           } else {
             alert(data.error || "Failed to add target.");
@@ -4322,7 +5642,372 @@ function renderDashboardHtml() {
         });
       }
       applyRoom(activeRoom);
+
     </script>
+
+  <div id="expPanel" style="display:none; position:fixed; width:280px; background:#161b24; border:1px solid var(--border); border-top:2px solid var(--accent); border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,0.75); z-index:99999; font-size:12px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px 8px; border-bottom:1px solid var(--border);">
+      <span style="font-weight:700; color:var(--accent);">Hesap Tecrübeleri</span>
+      <button id="expPanelClose" type="button" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;">✕</button>
+    </div>
+    <div style="padding:8px 12px;">
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:var(--muted);">Hapisten Kaçırma</span><span id="expPrisonEscape" style="font-weight:600;">-</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:var(--muted);">Suç Girişimleri</span><span id="expCrimeAttempts" style="font-weight:600;">-</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:var(--muted);">Araba Çalma</span><span id="expCarTheft" style="font-weight:600;">-</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:var(--muted);">Yarış Kazanma</span><span id="expWonRaces" style="font-weight:600;">-</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:var(--muted);">Cinayetler</span><span id="expMurders" style="font-weight:600;">-</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;"><span style="color:var(--muted);">Geri Saldırı Mermi</span><span id="expBulletsSpent" style="font-weight:600;">-</span></div>
+    </div>
+  </div>
+
+  <!-- Obay compact panel -->
+  <div id="obayCompactPanel" style="display:none; position:fixed; width:600px; background:#161b24; border:1px solid var(--border); border-top:2px solid var(--accent); border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,0.75); z-index:99999; font-size:12px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px 8px; border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <img src="https://barafranca.com/static/images/game/generic/obay.gif" style="width:18px;height:18px;object-fit:contain;">
+        <span style="font-weight:700; color:var(--accent);">Obay Açık Artırma</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="obayCompactMeta" style="color:var(--muted);font-size:10px;"></span>
+        <button id="obayCompactClose" type="button" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;">✕</button>
+      </div>
+    </div>
+    <div style="padding:6px 12px 4px; border-bottom:1px solid var(--border); display:flex; flex-wrap:wrap; gap:6px 14px;">
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted);font-size:11px;"><input type="checkbox" class="obay-filter" data-key="car" style="accent-color:var(--accent);"> Car</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted);font-size:11px;"><input type="checkbox" class="obay-filter" data-key="donate" style="accent-color:var(--accent);"> Donate code</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted);font-size:11px;"><input type="checkbox" class="obay-filter" data-key="witness" style="accent-color:var(--accent);"> Witness statements</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted);font-size:11px;"><input type="checkbox" class="obay-filter" data-key="bullets" style="accent-color:var(--accent);"> Pack of bullets</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted);font-size:11px;"><input type="checkbox" class="obay-filter" data-key="bodyguard" style="accent-color:var(--accent);"> Bodyguard</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted);font-size:11px;"><input type="checkbox" class="obay-filter" data-key="casino" style="accent-color:var(--accent);"> Casino</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted);font-size:11px;"><input type="checkbox" class="obay-filter" data-key="accommodation" style="accent-color:var(--accent);"> Accommodation</label>
+    </div>
+    <div style="padding:0 0 6px; max-height:360px; overflow-y:auto;">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+        <colgroup>
+          <col style="width:28%">
+          <col style="width:14%">
+          <col style="width:17%">
+          <col style="width:17%">
+          <col style="width:12%">
+          <col style="width:12%">
+        </colgroup>
+        <thead>
+          <tr style="color:var(--muted);text-align:left;font-size:10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:#161b24;z-index:2;">
+            <th data-sort="name" style="padding:6px 8px 4px 0;font-weight:600;cursor:pointer;user-select:none;">İsim <span id="obaySort_name"></span></th>
+            <th style="padding:6px 8px 4px;font-weight:600;">Satıcı</th>
+            <th data-sort="bid" style="padding:6px 8px 4px;font-weight:600;cursor:pointer;user-select:none;">Min. Teklif <span id="obaySort_bid"></span></th>
+            <th style="padding:6px 8px 4px;font-weight:600;">Şimdi Al</th>
+            <th style="padding:6px 8px 4px;font-weight:600;">Teklif Veren</th>
+            <th data-sort="end" style="padding:6px 0 4px 8px;font-weight:600;cursor:pointer;user-select:none;">Bitiş <span id="obaySort_end"></span></th>
+          </tr>
+        </thead>
+        <tbody id="obayCompactBody">
+          <tr><td colspan="6" style="color:var(--muted);padding:10px 0;text-align:center;">Veri bekleniyor...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      // Exp panel
+      var btn = document.getElementById("expToggleBtn");
+      var panel = document.getElementById("expPanel");
+      var closeBtn = document.getElementById("expPanelClose");
+      if (btn && panel) {
+        function openExpPanel() {
+          var r = btn.getBoundingClientRect();
+          panel.style.top = (r.bottom + 6) + "px";
+          panel.style.right = (window.innerWidth - r.right) + "px";
+          panel.style.display = "block";
+        }
+        function closeExpPanel() { panel.style.display = "none"; }
+        btn.addEventListener("click", function(e) {
+          e.stopPropagation();
+          panel.style.display === "none" ? openExpPanel() : closeExpPanel();
+        });
+        closeBtn && closeBtn.addEventListener("click", closeExpPanel);
+        document.addEventListener("click", function(e) {
+          if (panel.style.display !== "none" && !panel.contains(e.target) && e.target !== btn) closeExpPanel();
+        });
+      }
+
+      // Obay compact panel
+      var obayBtn = document.getElementById("obayCompactBtn");
+      var obayPanel = document.getElementById("obayCompactPanel");
+      var obayClose = document.getElementById("obayCompactClose");
+      var obayBody = document.getElementById("obayCompactBody");
+      var obayMeta = document.getElementById("obayCompactMeta");
+      var _obayAllItems = [];
+
+      var OBAY_FILTER_KEYWORDS = {
+        car:           ["car", "auto", "wagen", "vehicle", "suv", "truck", "sedan", "bugatti", "ferrari", "lamborghini", "porsche", "mercedes", "bmw"],
+        donate:        ["donate", "donating", "donatecode", "donate code", "donatiecode", "donation"],
+        witness:       ["witness", "verklaring", "getuige", "statement"],
+        bullets:       ["bullet", "bullets", "kogels", "pak met kogels", "pack of bullets", "ammo", "ammunition"],
+        bodyguard:     ["bodyguard", "bewaker"],
+        casino:        ["casino", "chip", "casinotoken"],
+        accommodation: ["accommodation", "woning", "huis", "onderkomen", "accommod", "apartment", "house"]
+      };
+
+      // Bodyguard items use "Name (Type | Skills)" format, e.g. "Joe (D10 | G+V)"
+      var BODYGUARD_PATTERN = /\\([A-Z]\\d+\\s*\\|/;
+
+      function matchesObayFilter(name, key) {
+        var n = String(name || "").toLowerCase();
+        if (key === "bodyguard" && BODYGUARD_PATTERN.test(String(name || ""))) return true;
+        return (OBAY_FILTER_KEYWORDS[key] || []).some(function(kw) { return n.includes(kw); });
+      }
+
+      function getActiveObayFilters() {
+        return Array.from(document.querySelectorAll(".obay-filter:checked")).map(function(el) { return el.dataset.key; });
+      }
+
+      function formatObayName(name) {
+        var n = String(name || "");
+        if (!n) return "-";
+        
+        var isBodyguard = /^bodyguard:\\s*/i.test(n) || /\\([ADS]\\d+/.test(n);
+        var cleanName = n.replace(/^bodyguard:\\s*/i, "");
+        var lower = n.toLowerCase();
+        
+        if (isBodyguard) {
+          return '<span style="color:var(--accent);font-weight:600;">' + cleanName + '</span>';
+        }
+        if (lower.includes("bullet") || lower.includes("kogel") || lower.includes("mermi")) {
+          return '<span style="color:var(--red);font-weight:600;">' + cleanName + '</span>';
+        }
+        if (lower.includes("donate") || lower.includes("donatie") || lower.includes("kod") || lower.includes("gift")) {
+          return '<span style="color:var(--yellow);font-weight:600;">' + cleanName + '</span>';
+        }
+        if (lower.includes("car") || lower.includes("auto") || lower.includes("wagen")) {
+          return '<span style="color:#f43f5e;font-weight:600;">' + cleanName + '</span>';
+        }
+        return '<span style="font-weight:600;">' + cleanName + '</span>';
+      }
+
+      var _obaySort = { key: null, dir: 1 };
+      var _obayCurrentLink = "";
+
+      function parseBid(str) {
+        return parseFloat(String(str || "").replace(/[^0-9.]/g, "")) || 0;
+      }
+
+      // Time duration parsing helper for countdowns
+      function parseEndSeconds(str) {
+        var s = String(str || "").trim().toLowerCase();
+        if (!s || s === "now") return 0;
+        var total = 0;
+        // "g" present → Turkish day format: g=gün(days), s=saat(hours), d=dakika(minutes)
+        var hasTurkishDays = /\\d\\s*g\\b/.test(s);
+        var re = /(\\d+)\\s*(sa|dk|sn|g|d|h|m|s)\\b/g, m;
+        while ((m = re.exec(s)) !== null) {
+          var n = parseInt(m[1]), u = m[2];
+          if (u === "g") total += n * 86400;
+          else if (u === "d") total += hasTurkishDays ? n * 60 : n * 86400;
+          else if (u === "h" || u === "sa") total += n * 3600;
+          else if (u === "m" || u === "dk") total += n * 60;
+          else if (u === "sn") total += n;
+          else if (u === "s") total += hasTurkishDays ? n * 3600 : n;
+        }
+        return total;
+      }
+
+      function formatCountdown(ms) {
+        var t = Math.max(0, Math.floor(ms / 1000));
+        var d = Math.floor(t / 86400);
+        var h = Math.floor((t % 86400) / 3600);
+        var m = Math.floor((t % 3600) / 60);
+        var s = t % 60;
+        if (d > 0) return d + "D " + h + "H " + m + "M";
+        if (h > 0) return h + "H " + m + "M " + s + "S";
+        if (m > 0) return m + "M " + s + "S";
+        return s + "S";
+      }
+
+      var _obayCountdownTimer = null;
+
+      function startObayCountdown() {
+        if (_obayCountdownTimer) clearInterval(_obayCountdownTimer);
+        _obayCountdownTimer = setInterval(function() {
+          var now = Date.now();
+          obayBody.querySelectorAll("td.obay-end-td[data-end-ts]").forEach(function(td) {
+            var endTs = parseInt(td.dataset.endTs);
+            if (!endTs) return;
+            if (now >= endTs) {
+              td.dataset.endTs = "0";
+              td.innerHTML = _obayCurrentLink
+                ? '<a href="' + _obayCurrentLink + '" target="_blank" style="color:var(--yellow);text-decoration:none;">NOW</a>'
+                : '<span style="color:var(--yellow);">NOW</span>';
+              return;
+            }
+            td.textContent = formatCountdown(endTs - now);
+          });
+        }, 1000);
+      }
+
+      function sortObayItems(items) {
+        if (!_obaySort.key) return items;
+        return items.slice().sort(function(a, b) {
+          var va, vb;
+          if (_obaySort.key === "name") {
+            va = String(a.name || "").toLowerCase();
+            vb = String(b.name || "").toLowerCase();
+            return _obaySort.dir * va.localeCompare(vb);
+          }
+          if (_obaySort.key === "bid") {
+            va = parseBid(a.minimumBid);
+            vb = parseBid(b.minimumBid);
+            return _obaySort.dir * (va - vb);
+          }
+          if (_obaySort.key === "end") {
+            va = a._endTs || 0;
+            vb = b._endTs || 0;
+            return _obaySort.dir * (va - vb);
+          }
+          return 0;
+        });
+      }
+
+      function updateSortIndicators() {
+        ["name","bid","end"].forEach(function(k) {
+          var el = document.getElementById("obaySort_" + k);
+          if (!el) return;
+          el.textContent = _obaySort.key === k ? (_obaySort.dir === 1 ? " ▲" : " ▼") : "";
+        });
+      }
+
+      document.querySelectorAll("#obayCompactPanel th[data-sort]").forEach(function(th) {
+        th.addEventListener("click", function() {
+          var key = th.dataset.sort;
+          if (_obaySort.key === key) {
+            _obaySort.dir *= -1;
+          } else {
+            _obaySort.key = key;
+            _obaySort.dir = 1;
+          }
+          updateSortIndicators();
+          applyObayFilters();
+        });
+      });
+
+      function applyObayFilters() {
+        var active = getActiveObayFilters();
+        var items = _obayAllItems;
+        if (active.length > 0) {
+          items = items.filter(function(item) {
+            return active.some(function(key) { return matchesObayFilter(item.name, key); });
+          });
+        }
+        items = sortObayItems(items);
+        if (items.length === 0) {
+          obayBody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:10px 0;text-align:center;">Eşleşen kayıt yok.</td></tr>';
+          return;
+        }
+        var srv = (typeof activeServerFilter !== "undefined" ? activeServerFilter : null) || "nl";
+        var obayLink = "https://barafranca." + (srv === "com" ? "com" : srv === "tr" ? "com.tr" : srv === "pt" ? "pt" : "nl") + "/#/?module=Obay&action=auctions";
+        _obayCurrentLink = obayLink;
+        var nowRender = Date.now();
+        var rows = items.map(function(item) {
+          var endTs = item._endTs || 0;
+          var endContent;
+          if (endTs === 0 || nowRender >= endTs) {
+            endContent = '<a href="' + obayLink + '" target="_blank" style="color:var(--yellow);text-decoration:none;">NOW</a>';
+          } else {
+            endContent = formatCountdown(endTs - nowRender);
+          }
+          return "<tr style='border-bottom:1px solid rgba(255,255,255,0.04)'>" +
+            '<td style="padding:5px 8px 5px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;" title="' + item.name + '">' + formatObayName(item.name) + "</td>" +
+            '<td style="padding:5px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;">' + (item.seller || "-") + "</td>" +
+            '<td style="padding:5px 8px;text-align:left;">' + (item.minimumBid || "-") + "</td>" +
+            '<td style="padding:5px 8px;text-align:left;">' + (item.buyItNow || "-") + "</td>" +
+            '<td style="padding:5px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;">' + (item.bidder || "-") + "</td>" +
+            '<td class="obay-end-td" data-end-ts="' + endTs + '" style="padding:5px 0 5px 8px;text-align:left;">' + endContent + "</td>" +
+            "</tr>";
+        });
+        obayBody.innerHTML = rows.join("");
+      }
+
+      function renderObayCompact(data) {
+        if (!data || !Array.isArray(data.items) || data.items.length === 0) {
+          _obayAllItems = [];
+          obayBody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:10px 0;text-align:center;">Obay verisi yok.</td></tr>';
+          if (obayMeta) obayMeta.textContent = "";
+          return;
+        }
+        var now = Date.now();
+        var dataAge = data.updatedAt ? Math.max(0, now / 1000 - data.updatedAt) : 0;
+        _obayAllItems = data.items.map(function(item) {
+          var endTs = 0;
+          if (/^\\d{10,}$/.test(item.endTime)) {
+            endTs = Number(item.endTime) * 1000;
+          } else {
+            var secs = parseEndSeconds(item.endTime);
+            endTs = (secs === 0) ? 0 : Math.round(now + (secs - dataAge) * 1000);
+          }
+          console.log("Obay debug - item:", item.name, "endTime:", item.endTime, "endTs:", endTs, "now:", now, "diff:", endTs - now);
+          return Object.assign({}, item, { _endTs: endTs });
+        });
+        applyObayFilters();
+        startObayCountdown();
+        if (obayMeta) {
+          var t = data.updatedAt ? new Date(data.updatedAt * 1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "";
+          var staleWarn = dataAge > 300 ? ' <span style="color:#f87171;font-size:11px;">· stale</span>' : "";
+          obayMeta.innerHTML = (data.updatedBy || "") + (t ? " · " + t : "") + staleWarn;
+        }
+      }
+
+      document.querySelectorAll(".obay-filter").forEach(function(cb) {
+        cb.addEventListener("change", applyObayFilters);
+      });
+
+      function fetchObayCompact() {
+        var srvRaw = (typeof activeServerFilter !== "undefined" ? activeServerFilter : "") || "";
+        var srv = (srvRaw && srvRaw !== "ALL") ? srvRaw : (function() {
+          if (typeof latestState !== "undefined" && latestState && Array.isArray(latestState.players)) {
+            var cid = (typeof myClientId !== "undefined" ? myClientId : "") || "";
+            var me = latestState.players.find(function(p) { return String(p.clientId || "") === cid; });
+            if (me && me.serverId) return me.serverId;
+            // Fall back to first non-offline player's server
+            var first = latestState.players.find(function(p) { return !p.offline && p.serverId; });
+            if (first) return first.serverId;
+          }
+          return "com";
+        })();
+        fetch("/api/obay?serverId=" + encodeURIComponent(srv))
+          .then(function(r) { return r.json(); })
+          .then(function(d) { if (d && d.ok !== false) renderObayCompact(d); })
+          .catch(function() {});
+      }
+
+      if (obayBtn && obayPanel) {
+        function openObayPanel() {
+          var r = obayBtn.getBoundingClientRect();
+          obayPanel.style.top = (r.bottom + 6) + "px";
+          obayPanel.style.right = (window.innerWidth - r.right) + "px";
+          obayPanel.style.display = "block";
+          fetchObayCompact();
+          // Re-fetch after 5s to pick up fresh extension data
+          window.setTimeout(function() {
+            if (obayPanel.style.display !== "none") fetchObayCompact();
+          }, 5000);
+        }
+        function closeObayPanel() {
+          obayPanel.style.display = "none";
+          if (_obayCountdownTimer) { clearInterval(_obayCountdownTimer); _obayCountdownTimer = null; }
+        }
+        obayBtn.addEventListener("click", function(e) {
+          e.stopPropagation();
+          obayPanel.style.display === "none" ? openObayPanel() : closeObayPanel();
+        });
+        obayClose && obayClose.addEventListener("click", closeObayPanel);
+        document.addEventListener("click", function(e) {
+          if (obayPanel.style.display !== "none" && !obayPanel.contains(e.target) && e.target !== obayBtn) closeObayPanel();
+        });
+      }
+    })();
+  </script>
+
   </body>
 </html>`;
 }
@@ -4368,14 +6053,12 @@ function getOrCreateRoom(roomName) {
       pending: {},
       players: {},
       chat: [],
-      obay: null,
       notes: [],
       targets: [],
     };
   } else {
     rooms[roomName].players = rooms[roomName].players || {};
     rooms[roomName].chat = rooms[roomName].chat || [];
-    rooms[roomName].obay = rooms[roomName].obay || null;
     rooms[roomName].members = rooms[roomName].members || {};
     rooms[roomName].pending = rooms[roomName].pending || {};
     rooms[roomName].notes = rooms[roomName].notes || [];
@@ -4463,7 +6146,7 @@ app.get("/", (_req, res) => {
 });
 
 app.post("/api/update", requireFamilyKey, (req, res) => {
-  const { room, player, game, updatedAt, progression, cooldowns, clientId, serverId, serverName, hostname } = req.body || {};
+  const { room, player, game, updatedAt, progression, cooldowns, clientId, serverId, serverName, hostname, cityGiftActive, mailUnreadCount } = req.body || {};
 
   if (!isValidRoom(room)) {
     res.status(400).json({ ok: false, error: "Invalid room" });
@@ -4480,7 +6163,22 @@ app.post("/api/update", requireFamilyKey, (req, res) => {
     return;
   }
 
-  const access = getRoomAccess(room, clientId);
+  let access = getRoomAccess(room, clientId);
+
+  // Auto-promote: player name matches room owner → reclaim ownership
+  // Handles clientId reset (pending or completely new clientId)
+  if ((access === "pending" || access === "none") && rooms[room] && rooms[room].ownerPlayer &&
+      player.trim().toLowerCase() === rooms[room].ownerPlayer.toLowerCase()) {
+    rooms[room].ownerClientId = clientId;
+    rooms[room].members = rooms[room].members || {};
+    rooms[room].members[clientId] = { player: player.trim(), role: "owner", joinedAt: getServerTime() };
+    if (rooms[room].pending && rooms[room].pending[clientId]) {
+      delete rooms[room].pending[clientId];
+    }
+    saveRoomsStore(rooms);
+    access = "owner";
+  }
+
   if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
     res.status(403).json({ ok: false, error: "Access denied" });
     return;
@@ -4506,11 +6204,20 @@ app.post("/api/update", requireFamilyKey, (req, res) => {
         bullets: typeof progression.bullets === "string" ? progression.bullets.trim() : "",
         money: typeof progression.money === "string" ? progression.money.trim() : "",
         bank: typeof progression.bank === "string" ? progression.bank.trim() : "",
+        health: typeof progression.health === "string" ? progression.health.trim() : "",
+        prisonEscape: typeof progression.prisonEscape === "string" ? progression.prisonEscape.trim() : "",
+        crimeAttempts: typeof progression.crimeAttempts === "string" ? progression.crimeAttempts.trim() : "",
+        carTheftAttempts: typeof progression.carTheftAttempts === "string" ? progression.carTheftAttempts.trim() : "",
+        wonRaces: typeof progression.wonRaces === "string" ? progression.wonRaces.trim() : "",
+        murders: typeof progression.murders === "string" ? progression.murders.trim() : "",
+        bulletsSpent: typeof progression.bulletsSpent === "string" ? progression.bulletsSpent.trim() : "",
         platingLabel: typeof progression.platingLabel === "string" ? progression.platingLabel.trim() : "",
         platingPercent: typeof progression.platingPercent === "string" ? progression.platingPercent.trim() : "",
       }
       : {},
     cooldowns,
+    cityGiftActive: cityGiftActive === true,
+    mailUnreadCount: Number.isFinite(Number(mailUnreadCount)) ? Math.max(0, Number(mailUnreadCount)) : 0,
   };
 
   res.json({ ok: true });
@@ -4537,7 +6244,8 @@ app.get("/api/state", (req, res) => {
     let progression = entry.progression || {};
     let cooldowns = applyLockedCooldowns(entry.cooldowns || {}, progression.rank);
 
-    if (room.toLowerCase() === "general") {
+    const isOwnData = entry.clientId && clientId && entry.clientId === clientId;
+    if (room.toLowerCase() === "general" && !isOwnData) {
       progression = {
         rank: progression.rank,
         platingLabel: progression.platingLabel,
@@ -4550,7 +6258,7 @@ app.get("/api/state", (req, res) => {
       };
 
       const censoredCooldowns = {};
-      const allowedKeys = ["heist", "organizedCrime", "megaOrganizedCrime", "spot"];
+      const allowedKeys = ["heist", "organizedCrime", "megaOrganizedCrime", "race"];
       for (const [k, v] of Object.entries(cooldowns)) {
         if (allowedKeys.includes(k)) {
           censoredCooldowns[k] = applyLockedCooldowns({ [k]: v }, progression.rank)[k];
@@ -4575,10 +6283,28 @@ app.get("/api/state", (req, res) => {
       game: entry.game,
       updatedAt: entry.updatedAt,
       offline: serverTime - entry.updatedAt > 90,
+      cityGiftActive: entry.cityGiftActive === true,
+      mailUnreadCount: Number.isFinite(Number(entry.mailUnreadCount)) ? Math.max(0, Number(entry.mailUnreadCount)) : 0,
       progression,
       cooldowns,
     };
   });
+
+  let selfProgression = null;
+  if (clientId) {
+    const { serverId: selfServerId } = req.query;
+    const srv = (selfServerId || "").toLowerCase();
+    const findSelf = function(playersObj) {
+      const entries = Object.values(playersObj || {}).filter(function(e) { return e.clientId === clientId; });
+      if (!entries.length) return null;
+      if (srv) {
+        return entries.find(function(e) { return (e.serverId || "").toLowerCase() === srv; }) || null;
+      }
+      return entries[0];
+    };
+    const selfEntry = findSelf(roomData.players) || findSelf((rooms["General"] || {}).players);
+    if (selfEntry) selfProgression = selfEntry.progression || null;
+  }
 
   res.json({
     room,
@@ -4586,16 +6312,12 @@ app.get("/api/state", (req, res) => {
     players,
     notes: roomData.notes || [],
     targets: roomData.targets || [],
+    selfProgression,
   });
 });
 
 app.post("/api/obay/update", requireFamilyKey, (req, res) => {
-  const { room, player, updatedAt, items, clientId, serverId } = req.body || {};
-
-  if (!isValidRoom(room)) {
-    res.status(400).json({ ok: false, error: "Invalid room" });
-    return;
-  }
+  const { player, updatedAt, items, serverId } = req.body || {};
 
   if (typeof player !== "string" || !player.trim()) {
     res.status(400).json({ ok: false, error: "Player is required" });
@@ -4607,55 +6329,30 @@ app.post("/api/obay/update", requireFamilyKey, (req, res) => {
     return;
   }
 
-  const access = getRoomAccess(room, clientId);
-  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
-    res.status(403).json({ ok: false, error: "Access denied" });
-    return;
-  }
-
-  const roomData = getOrCreateRoom(room);
-  roomData.obay = roomData.obay || {};
-  const targetServerId = (serverId || "nl").toLowerCase();
-  roomData.obay[targetServerId] = {
+  const targetServerId = (serverId || "com").toLowerCase();
+  obayData[targetServerId] = {
     updatedAt: Number.isFinite(updatedAt) ? updatedAt : getServerTime(),
     updatedBy: player.trim(),
     items: items.map((item) => ({
       name: typeof item.name === "string" ? item.name.trim() : "",
       seller: typeof item.seller === "string" ? item.seller.trim() : "",
       minimumBid: typeof item.minimumBid === "string" ? item.minimumBid.trim() : "",
+      buyItNow: typeof item.buyItNow === "string" ? item.buyItNow.trim() : "",
       bidder: typeof item.bidder === "string" ? item.bidder.trim() : "",
       endTime: typeof item.endTime === "string" ? item.endTime.trim() : "",
     })),
   };
+  saveObayStore();
 
   res.json({ ok: true });
 });
 
 app.get("/api/obay", (req, res) => {
-  const { room, clientId, serverId } = req.query;
-
-  if (!isValidRoom(room)) {
-    res.status(400).json({ ok: false, error: "Invalid room" });
-    return;
-  }
-
-  const access = getRoomAccess(room, clientId);
-  if (room !== "General" && room !== "TestRoom" && rooms[room] && rooms[room].ownerClientId && access !== "owner" && access !== "member") {
-    res.status(403).json({ ok: false, error: "Access denied" });
-    return;
-  }
-
-  const targetServerId = (serverId || "nl").toLowerCase();
-  const roomData = rooms[room] || {};
-  const obayStore = roomData.obay || {};
-  const obay = obayStore[targetServerId] || {
-    updatedAt: 0,
-    updatedBy: "",
-    items: [],
-  };
+  const { serverId } = req.query;
+  const targetServerId = (serverId || "com").toLowerCase();
+  const obay = obayData[targetServerId] || { updatedAt: 0, updatedBy: "", items: [] };
 
   res.json({
-    room,
     serverId: targetServerId,
     updatedAt: obay.updatedAt,
     updatedBy: obay.updatedBy,
@@ -4849,6 +6546,25 @@ app.post("/api/rooms/targets/add", (req, res) => {
   });
 
   saveRoomsStore(rooms);
+
+  const actorName = (player || 'Unknown').trim();
+  const sysId = 'sys_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+  roomData.chat = roomData.chat || [];
+  roomData.chat.push({
+    id: sysId,
+    player: '⚙️ System',
+    message: '🎯 ' + name.trim() + ' added by ' + actorName,
+    createdAt: getServerTime(),
+    pinned: false,
+    system: true,
+    type: 'target-add',
+    targetName: name.trim(),
+    addedBy: actorName,
+  });
+  if (roomData.chat.length > 100) {
+    roomData.chat = roomData.chat.slice(-100);
+  }
+
   res.json({ ok: true });
 });
 
@@ -4891,6 +6607,10 @@ app.post('/api/rooms/targets/toggle-dead', (req, res) => {
     createdAt: getServerTime(),
     pinned: false,
     system: true,
+    type: 'target-dead',
+    targetName: target.name,
+    addedBy: actorName,
+    isDead: target.dead,
   });
   if (roomData.chat.length > 100) {
     roomData.chat = roomData.chat.slice(-100);
@@ -5099,6 +6819,102 @@ app.post("/api/rooms/kick", (req, res) => {
   }
 
   res.status(400).json({ ok: false, error: "Target player not member" });
+});
+
+app.post("/api/game-chat", (req, res) => {
+  const validServers = ["tr", "nl", "com", "pt"];
+  const validKinds = ["general", "crimes"];
+  const srv = String((req.body || {}).serverId || "").toLowerCase();
+  const k = String((req.body || {}).kind || "").toLowerCase();
+  const history = (req.body || {}).history;
+
+  if (!validServers.includes(srv)) {
+    return res.status(400).json({ ok: false, error: "Invalid serverId" });
+  }
+  if (!validKinds.includes(k)) {
+    return res.status(400).json({ ok: false, error: "Invalid kind" });
+  }
+  if (!Array.isArray(history)) {
+    return res.status(400).json({ ok: false, error: "history must be an array" });
+  }
+
+  if (!gameChatStore[srv]) {
+    gameChatStore[srv] = { general: [], crimes: [] };
+  }
+
+  const serverTime = String((req.body || {}).serverTime || "").trim();
+  const serverTimeSyncedAt = Number((req.body || {}).serverTimeSyncedAt) || 0;
+  if (serverTime && serverTimeSyncedAt) {
+    gameChatStore[srv].serverTime = serverTime;
+    gameChatStore[srv].serverTimeSyncedAt = serverTimeSyncedAt;
+  }
+
+  const store = gameChatStore[srv][k];
+  const seenIds = new Set(store.map((m) => String(m.id)));
+
+  for (const msg of history) {
+    if (!msg || msg.id == null) continue;
+    const msgId = String(msg.id);
+    if (seenIds.has(msgId)) continue;
+    store.push({
+      id: msgId,
+      user_name: String(msg.user_name || ""),
+      message: String(msg.message || ""),
+      created_at: String(msg.created_at || "")
+    });
+    seenIds.add(msgId);
+  }
+
+  if (store.length > 200) {
+    gameChatStore[srv][k] = store.slice(-200);
+  }
+
+  res.json({ ok: true });
+});
+
+app.get("/api/game-chat", (req, res) => {
+  const validServers = ["tr", "nl", "com", "pt"];
+  const validKinds = ["general", "crimes"];
+  const srv = String(req.query.serverId || "").toLowerCase();
+  const k = String(req.query.kind || "").toLowerCase();
+
+  if (!validServers.includes(srv)) {
+    return res.status(400).json({ ok: false, error: "Invalid serverId" });
+  }
+  if (!validKinds.includes(k)) {
+    return res.status(400).json({ ok: false, error: "Invalid kind" });
+  }
+
+  const messages = (gameChatStore[srv] && gameChatStore[srv][k]) || [];
+  const serverTime = (gameChatStore[srv] && gameChatStore[srv].serverTime) || "";
+  const serverTimeSyncedAt = (gameChatStore[srv] && gameChatStore[srv].serverTimeSyncedAt) || 0;
+  res.json({ ok: true, messages, serverTime, serverTimeSyncedAt });
+});
+
+app.post("/api/game-chat-outbox", (req, res) => {
+  const validServers = ["tr", "nl", "com", "pt"];
+  const validKinds = ["general", "crimes"];
+  const serverId = String(req.body.serverId || "").toLowerCase();
+  const kind = String(req.body.kind || "").toLowerCase();
+  const message = String(req.body.message || "").trim();
+  if (!validServers.includes(serverId)) return res.status(400).json({ ok: false, error: "Invalid serverId" });
+  if (!validKinds.includes(kind)) return res.status(400).json({ ok: false, error: "Invalid kind" });
+  if (!message) return res.status(400).json({ ok: false, error: "Empty message" });
+  const id = ++gameChatOutboxCounter;
+  gameChatOutbox.push({ id, serverId, kind, message, createdAt: Date.now() });
+  const cutoff = Date.now() - 30000;
+  while (gameChatOutbox.length && gameChatOutbox[0].createdAt < cutoff) gameChatOutbox.shift();
+  res.json({ ok: true, id });
+});
+
+app.get("/api/game-chat-outbox", (req, res) => {
+  const serverId = String(req.query.serverId || "").toLowerCase();
+  const pending = gameChatOutbox.filter(m => m.serverId === serverId);
+  pending.forEach(m => {
+    const idx = gameChatOutbox.indexOf(m);
+    if (idx !== -1) gameChatOutbox.splice(idx, 1);
+  });
+  res.json({ ok: true, messages: pending });
 });
 
 app.listen(port, "0.0.0.0", () => {

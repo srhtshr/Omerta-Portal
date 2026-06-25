@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = "https://omerta-portal.onrender.com";
+const DEFAULT_API_URL = "http://localhost:3000";
 
 async function getOrCreateClientId() {
   let stored = await chrome.storage.local.get("CLIENT_ID");

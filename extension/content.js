@@ -4,7 +4,7 @@ const DASHBOARD_HOSTS = [
   "omerta-portal.onrender.com"
 ];
 
-const DEFAULT_API_URL = "https://omerta-portal.onrender.com";
+const DEFAULT_API_URL = "http://localhost:3000";
 
 const isDashboard = DASHBOARD_HOSTS.some(host =>
   window.location.origin.includes(host)
@@ -90,9 +90,16 @@ const SERVER_PROFILES = [
       rank: ["Seviye", "Rütbe", "Rank", "Rang", "Estatuto"],
       progression: ["Seviye Ilerlemesi", "Seviye İlerlemesi", "Rütbe ilerlemesi", "Rütbe gelişi", "Rank progress", "Rank progression", "Progress to next rank", "Rangvordering", "Rang progressie", "Progresso no estatuto"],
       activity: ["Aktivite", "Sağlık", "Activity", "Activiteit"],
-      bullets_field: ["Mermi"],
-      money: ["Para"],
-      bank: ["Banka", "Bankadaki para"]
+      bullets_field: ["Mermi", "Mermiler"],
+      money: ["Para", "Nakit"],
+      bank: ["Banka", "Bankadaki para", "Banka Hesabi", "Banka hesabi"],
+      health: ["Saglik", "Sağlık", "Saglık", "Saglik:"],
+      prisonEscape: ["Hapisten Kacirma/Total Attempts", "Hapisten Kaçırma/Total Attempts"],
+      crimeAttempts: ["Suc Girisimleri", "Suç Girişimleri"],
+      carTheftAttempts: ["Araba Calma Girisimleri", "Araba Çalma Girişimleri"],
+      wonRaces: ["Kazanilmis Araba Yarislari", "Kazanılmış Araba Yarışları"],
+      murders: ["Cinayetler"],
+      bulletsSpent: ["Geri Saldirida Harcanan Mermi", "Geri Saldırıda Harcanan Mermi"]
     }
   },
   {
@@ -137,13 +144,24 @@ function detectServerProfile() {
 
 
 async function getOrCreateClientId() {
-  let stored = await chrome.storage.local.get("CLIENT_ID");
-  if (!stored.CLIENT_ID) {
-    const newId = "client_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    await chrome.storage.local.set({ CLIENT_ID: newId });
-    return newId;
+  // Try sync storage first (persists across browser reinstalls when signed into Chrome)
+  let synced = await chrome.storage.sync.get("CLIENT_ID").catch(() => ({}));
+  if (synced.CLIENT_ID) {
+    // Backfill local so other code reading local also finds it
+    await chrome.storage.local.set({ CLIENT_ID: synced.CLIENT_ID }).catch(() => {});
+    return synced.CLIENT_ID;
   }
-  return stored.CLIENT_ID;
+  // Fall back to local (migrate existing local ID to sync)
+  let local = await chrome.storage.local.get("CLIENT_ID");
+  if (local.CLIENT_ID) {
+    await chrome.storage.sync.set({ CLIENT_ID: local.CLIENT_ID }).catch(() => {});
+    return local.CLIENT_ID;
+  }
+  // Create new ID, store in both
+  const newId = "client_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  await chrome.storage.sync.set({ CLIENT_ID: newId }).catch(() => {});
+  await chrome.storage.local.set({ CLIENT_ID: newId }).catch(() => {});
+  return newId;
 }
 
 const STORAGE_DEFAULTS = {
@@ -204,7 +222,14 @@ const PROFILE_FIELD_LABELS = {
   activity: [],
   bullets: [],
   money: [],
-  bank: []
+  bank: [],
+  health: [],
+  prisonEscape: [],
+  crimeAttempts: [],
+  carTheftAttempts: [],
+  wonRaces: [],
+  murders: [],
+  bulletsSpent: []
 };
 
 for (const profile of SERVER_PROFILES) {
@@ -894,6 +919,13 @@ function parseCharacterProgressionFromDocument(doc) {
   let bullets = "";
   let money = "";
   let bank = "";
+  let health = "";
+  let prisonEscape = "";
+  let crimeAttempts = "";
+  let carTheftAttempts = "";
+  let wonRaces = "";
+  let murders = "";
+  let bulletsSpent = "";
   let platingLabel = "";
   let platingPercent = "";
   let progressRow = null;
@@ -952,6 +984,36 @@ function parseCharacterProgressionFromDocument(doc) {
       continue;
     }
 
+    if (!health && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.health)) {
+      health = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+
+    if (!prisonEscape && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.prisonEscape)) {
+      prisonEscape = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+    if (!crimeAttempts && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.crimeAttempts)) {
+      crimeAttempts = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+    if (!carTheftAttempts && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.carTheftAttempts)) {
+      carTheftAttempts = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+    if (!wonRaces && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.wonRaces)) {
+      wonRaces = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+    if (!murders && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.murders)) {
+      murders = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+    if (!bulletsSpent && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.bulletsSpent)) {
+      bulletsSpent = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
+      continue;
+    }
+
     if (!bank && cells.length >= 2 && matchesAnyAlias(labelText, PROFILE_FIELD_LABELS.bank)) {
       bank = trimToString(cells[1].innerText || cells[1].textContent).replace(/\s+/g, " ");
       continue;
@@ -986,12 +1048,6 @@ function parseCharacterProgressionFromDocument(doc) {
     }
   }
 
-  console.log(
-    "[Omerta Progress Debug]",
-    progressRow ? progressRow.outerHTML : null,
-    progressionPercent,
-  );
-
   return {
     rank,
     progressionPercent,
@@ -999,6 +1055,13 @@ function parseCharacterProgressionFromDocument(doc) {
     bullets,
     money,
     bank,
+    health,
+    prisonEscape,
+    crimeAttempts,
+    carTheftAttempts,
+    wonRaces,
+    murders,
+    bulletsSpent,
     platingLabel,
     platingPercent,
   };
@@ -1064,6 +1127,181 @@ async function loadInformationDocumentViaIframe() {
   }
 }
 
+let obayApiFetchInFlight = null;
+let lastObayBackgroundFetchTime = 0;
+let lastKnownTimeDiff = 0;
+const OBAY_BACKGROUND_FETCH_THROTTLE_MS = 20000; // 20 seconds
+
+function formatObayItemNameFromApi(item) {
+  const type = item.type_lang || item.type || "";
+  const extra = item.extra || {};
+  
+  if (type.toLowerCase() === "bodyguard") {
+    const parts = [];
+    if (extra.bodyguard_attack && extra.bodyguard_attack !== "0") {
+      parts.push("A" + extra.bodyguard_attack);
+    }
+    if (extra.bodyguard_defense && extra.bodyguard_defense !== "0") {
+      parts.push("D" + extra.bodyguard_defense);
+    }
+    if (extra.bodyguard_special && extra.bodyguard_special !== "0") {
+      parts.push("S" + extra.bodyguard_special);
+    }
+    if (extra.bodyguard_gun && (extra.bodyguard_gun === "1" || extra.bodyguard_gun === 1)) {
+      parts.push("G");
+    }
+    if (extra.bodyguard_vest && (extra.bodyguard_vest === "1" || extra.bodyguard_vest === 1)) {
+      parts.push("V");
+    }
+    const suffix = parts.length > 0 ? " (" + parts.join(" | ") + ")" : "";
+    return "Bodyguard: " + (extra.name || "") + suffix;
+  }
+  
+  if (extra.name) {
+    if (extra.name.startsWith("(")) {
+      return type + " " + extra.name;
+    }
+    return type + ": " + extra.name;
+  }
+  
+  return type;
+}
+
+function formatObayPrice(val) {
+  const num = parseInt(val, 10);
+  if (isNaN(num)) return val;
+  return "$" + num.toLocaleString("en-US");
+}
+
+async function loadObayItemsViaApi() {
+  if (obayApiFetchInFlight) {
+    console.log("[Omerta Portal] obay API fetch already in flight, skipping");
+    return null;
+  }
+
+  obayApiFetchInFlight = (async () => {
+    const targetUrl = window.location.origin + "/?module=API.Obay&action=getData&";
+    console.log("[Omerta Portal] obay API fetch start:", targetUrl);
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetch(targetUrl, {
+        credentials: "include",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error("Obay API HTTP " + response.status);
+      }
+
+      const json = await response.json();
+      if (!json || !json.OK || !Array.isArray(json.data)) {
+        throw new Error("Obay API response not OK or data is not array");
+      }
+
+      // Calculate clock desync difference
+      const serverTime = parseInt(json.time, 10);
+      const localTime = Math.round(Date.now() / 1000);
+      if (!isNaN(serverTime)) {
+        lastKnownTimeDiff = localTime - serverTime;
+        console.log("[Omerta Portal] Obay API server time synced. Desync = " + lastKnownTimeDiff + "s");
+      }
+
+      console.log("[Omerta Portal] Obay API raw items count=" + json.data.length);
+      
+      const items = json.data.map(item => {
+        const name = formatObayItemNameFromApi(item);
+        const seller = (item.seller && typeof item.seller === "object") 
+          ? (item.seller.name || "Anonymous") 
+          : (item.seller || "Anonymous");
+          
+        const bidsCount = parseInt(item.bids, 10) || 0;
+        const priceVal = bidsCount > 0 ? item.bid_current : item.bid_start;
+        const minimumBid = formatObayPrice(priceVal);
+        
+        const binVal = parseInt(item.bid_buyitnow, 10) || 0;
+        const buyItNow = binVal > 0 ? formatObayPrice(item.bid_buyitnow) : "-";
+        
+        const bidder = bidsCount > 0 ? "Yes" : "-";
+        
+        // Adjust endTime by adding lastKnownTimeDiff to handle user-server clock desync
+        let endTime = String(item.time_end || "");
+        if (endTime && lastKnownTimeDiff !== 0) {
+          const rawEndTimeNum = parseInt(endTime, 10);
+          if (!isNaN(rawEndTimeNum)) {
+            endTime = String(rawEndTimeNum + lastKnownTimeDiff);
+          }
+        }
+
+        return {
+          name,
+          seller,
+          minimumBid,
+          buyItNow,
+          bidder,
+          endTime
+        };
+      });
+
+      return items;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  })();
+
+  try {
+    return await obayApiFetchInFlight;
+  } catch (error) {
+    console.warn("[Omerta Portal] obay API fetch error:", error.message);
+    return null;
+  } finally {
+    obayApiFetchInFlight = null;
+  }
+}
+
+async function fetchObayInBackground(settings, player, room) {
+  const now = Date.now();
+  if (now - lastObayBackgroundFetchTime < OBAY_BACKGROUND_FETCH_THROTTLE_MS) {
+    return;
+  }
+
+  lastObayBackgroundFetchTime = now;
+
+  try {
+    const profile = detectServerProfile();
+    const clientId = await getOrCreateClientId();
+    
+    // Try fetching via API
+    const items = await loadObayItemsViaApi();
+    if (!items || items.length === 0) {
+      console.log("[Omerta Portal] Background Obay fetch returned no items or failed. Skipping update.");
+      return;
+    }
+    
+    await postObayUpdate(settings, {
+      room,
+      player,
+      clientId,
+      updatedAt: getUnixTime(),
+      items,
+      serverId: profile.serverId,
+      serverName: profile.displayName,
+      hostname: window.location.hostname,
+      nickname: player,
+      timestamp: getUnixTime(),
+    });
+    console.log("[Omerta Portal] Background Obay updated successfully with " + items.length + " items.");
+  } catch (err) {
+    console.warn("[Omerta Portal] Background Obay update error:", err);
+  }
+}
+
+
 function parseInformationDocument(doc, manualAlias) {
   const waitingTable = findWaitingTableInDocument(doc);
   const parsedCooldowns = parseCooldownsFromTable(waitingTable);
@@ -1120,15 +1358,30 @@ async function postObayUpdate(settings, payload) {
   }
 }
 
+function fetchCityGiftActive() {
+  const hasGift = !!document.getElementById("city_gift_notification");
+  console.log("[CityGift] active=" + hasGift);
+  return hasGift;
+}
+
+function parseMailUnreadCountFromDocument(doc) {
+  const d = doc || document;
+  const el = d.querySelector('a[href*="module=Mail"] .sidebar-bubble-number');
+  const count = el ? parseInt(el.textContent.trim(), 10) || 0 : 0;
+  console.log("[Mail] parsed count=", count);
+  return count;
+}
+
 function isVisibleElement(element) {
   return Boolean(element) && element.getClientRects().length > 0;
 }
 
-function findObayAuctionTable() {
-  const tables = Array.from(document.querySelectorAll("table"));
+function findObayAuctionTable(doc, checkVisibility = true) {
+  const d = doc || document;
+  const tables = Array.from(d.querySelectorAll("table"));
 
   for (const table of tables) {
-    if (!isVisibleElement(table)) {
+    if (checkVisibility && !isVisibleElement(table)) {
       continue;
     }
 
@@ -1192,8 +1445,8 @@ function getCellText(cells, index) {
   return trimToString(cells[index].innerText || cells[index].textContent).replace(/\s+/g, " ");
 }
 
-function parseObayItemsFromPage() {
-  const result = findObayAuctionTable();
+function parseObayItemsFromPage(doc, checkVisibility = true) {
+  const result = findObayAuctionTable(doc, checkVisibility);
   if (!result) {
     return [];
   }
@@ -1205,7 +1458,7 @@ function parseObayItemsFromPage() {
   const items = [];
 
   for (const row of rows.slice(headerIndex + 1)) {
-    if (!isVisibleElement(row)) {
+    if (checkVisibility && !isVisibleElement(row)) {
       continue;
     }
 
@@ -1214,12 +1467,30 @@ function parseObayItemsFromPage() {
       continue;
     }
 
+    const timeEndSpan = cells[indices.endTime] ? cells[indices.endTime].querySelector("span[data-time-end]") : null;
+    const timeEndVal = timeEndSpan ? timeEndSpan.getAttribute("data-time-end") : "";
+
+    // Adjust scraped endTime using lastKnownTimeDiff to handle user-server clock desync
+    let scrapedEndTime = timeEndVal || getCellText(cells, indices.endTime);
+    if (timeEndVal && lastKnownTimeDiff !== 0) {
+      const rawEndTimeNum = parseInt(timeEndVal, 10);
+      if (!isNaN(rawEndTimeNum)) {
+        scrapedEndTime = String(rawEndTimeNum + lastKnownTimeDiff);
+      }
+    }
+
+    const minBidRaw = getCellText(cells, indices.minimumBid);
+    const binMatch = minBidRaw.match(/\(\s*(\$[\d,]+)\s*\)/);
+    const buyItNow = binMatch ? binMatch[1] : "-";
+    const cleanMinBid = minBidRaw.replace(/\s*\(\s*\$[\d,]+\s*\)\s*$/, "").trim();
+
     const item = {
       name: getCellText(cells, indices.name),
       seller: getCellText(cells, indices.seller),
-      minimumBid: getCellText(cells, indices.minimumBid),
+      minimumBid: cleanMinBid,
+      buyItNow: buyItNow,
       bidder: getCellText(cells, indices.bidder),
-      endTime: getCellText(cells, indices.endTime),
+      endTime: scrapedEndTime,
     };
 
     if (!item.name || !item.seller || !item.minimumBid || !item.endTime) {
@@ -1237,7 +1508,21 @@ async function sendObayUpdate(settings, player, room) {
     return { ok: false, skipped: true, reason: "not-obay-page" };
   }
 
-  const items = parseObayItemsFromPage();
+  // 1. Try fetching via API first to get clean, desync-adjusted data
+  let items = await loadObayItemsViaApi();
+  let source = "api";
+
+  // 2. If API fails or is empty, fall back to live DOM scraping
+  if (!items || items.length === 0) {
+    console.log("[Omerta Portal] Live Obay API fetch failed or returned no items, falling back to DOM scraper...");
+    items = parseObayItemsFromPage();
+    source = "dom";
+  }
+
+  if (!items || items.length === 0) {
+    return { ok: false, error: "No obay items found from API or DOM" };
+  }
+
   const clientId = await getOrCreateClientId();
   const profile = detectServerProfile();
   await postObayUpdate(settings, {
@@ -1252,6 +1537,8 @@ async function sendObayUpdate(settings, player, room) {
     nickname: player,
     timestamp: getUnixTime(),
   });
+
+  console.log("[Omerta Portal] Live Obay updated successfully via " + source + " with " + items.length + " items.");
 
   return {
     ok: true,
@@ -1285,6 +1572,7 @@ async function sendCooldownUpdate(trigger) {
       } else {
         console.warn("[Omerta] hidden iframe parse failed, falling back to live DOM");
       }
+
     }
 
     if (!parsedInfo && !obayPage) {
@@ -1316,10 +1604,16 @@ async function sendCooldownUpdate(trigger) {
     lastKnownPlayer = player;
     await saveCachedSnapshot();
 
+    const cityGiftActive = await fetchCityGiftActive();
+    console.log("[City] payload value=", cityGiftActive);
+    const mailSourceDoc = document || infoDoc;
+    const mailUnreadCount = parseMailUnreadCountFromDocument(mailSourceDoc);
+
     if (obayPage) {
       await sendObayUpdate(settings, player, currentRoom);
       const profile = detectServerProfile();
       if (lastKnownCooldowns) {
+        console.log("[Mail] payload value=", mailUnreadCount);
         await postUpdate(settings, {
           room: currentRoom,
           player,
@@ -1330,6 +1624,8 @@ async function sendCooldownUpdate(trigger) {
           serverId: profile.serverId,
           serverName: profile.displayName,
           hostname: window.location.hostname,
+          cityGiftActive,
+          mailUnreadCount,
           nickname: player,
           timestamp: getUnixTime(),
         });
@@ -1393,9 +1689,12 @@ async function sendCooldownUpdate(trigger) {
       serverId: profile.serverId,
       serverName: profile.displayName,
       hostname: window.location.hostname,
+      cityGiftActive,
+      mailUnreadCount,
       nickname: player,
       timestamp: getUnixTime(),
     };
+    console.log("[Mail] payload value=", mailUnreadCount);
 
     if (!hasParsedCooldowns && lastKnownCooldowns) {
       payload.cooldowns = cloneJsonSafe(lastKnownCooldowns);
@@ -1403,6 +1702,7 @@ async function sendCooldownUpdate(trigger) {
     }
 
     await postUpdate(settings, payload);
+    fetchObayInBackground(settings, player, currentRoom);
     if (Object.keys(payload.cooldowns).length > 0) {
       lastKnownCooldowns = cloneJsonSafe(payload.cooldowns);
       lastKnownProgression = cloneJsonSafe(payload.progression);
@@ -1451,7 +1751,12 @@ async function pollOnce(trigger) {
 }
 
 async function scheduleNextPoll(delayMs) {
-  const settings = await readSettings();
+  let settings;
+  try {
+    settings = await readSettings();
+  } catch (_e) {
+    return;
+  }
 
   if (pollTimerId) {
     clearTimeout(pollTimerId);
@@ -1465,23 +1770,136 @@ async function scheduleNextPoll(delayMs) {
   const intervalMs = Math.max(MIN_REFRESH_MS, Number(delayMs) || READY_REFRESH_MS);
   console.log("[Omerta] Next refresh scheduled in", Math.ceil(intervalMs / 1000), "seconds");
   pollTimerId = window.setTimeout(async () => {
-    const result = await pollOnce("interval");
-    scheduleNextPoll(result && result.nextDelayMs);
+    try {
+      const result = await pollOnce("interval");
+      scheduleNextPoll(result && result.nextDelayMs);
+    } catch (_e) {
+      scheduleNextPoll(null);
+    }
   }, intervalMs);
 }
 
 async function startPolling() {
-  const settings = await readSettings();
-  await writeStatus({
-    room: sanitizeRoom(settings.room),
-  });
+  let settings;
+  try {
+    settings = await readSettings();
+  } catch (_e) {
+    return;
+  }
+  try {
+    await writeStatus({ room: sanitizeRoom(settings.room) });
+  } catch (_e) {}
 
   if (!settings.enabled) {
     return;
   }
 
-  const result = await pollOnce("startup");
-  scheduleNextPoll(result && result.nextDelayMs);
+  try {
+    const result = await pollOnce("startup");
+    scheduleNextPoll(result && result.nextDelayMs);
+  } catch (_e) {
+    scheduleNextPoll(null);
+  }
+}
+
+let gameChatPollTimer = null;
+let gameChatServerTimeSent = false;
+
+async function fetchAndPushGameChat(settings) {
+  const apiBase = (settings.apiUrl || DEFAULT_API_URL).replace(/\/+$/, "");
+  const profile = detectServerProfile();
+  const serverId = profile ? profile.serverId : "";
+  console.log("[GameChat] server profile serverId=" + serverId + " origin=" + window.location.origin);
+  if (!serverId) return;
+
+  let serverTime;
+  let serverTimeSyncedAt;
+  if (!gameChatServerTimeSent) {
+    const clockEl = document.getElementById("omerta_clock");
+    const raw = clockEl ? clockEl.textContent.trim() : "";
+    if (raw) {
+      serverTime = raw;
+      serverTimeSyncedAt = Date.now();
+    }
+  }
+
+  const endpoints = [
+    { kind: "general", room: "omerta.general" },
+    { kind: "crimes", room: "omerta.orgcrime" }
+  ];
+
+  try {
+    const outboxRes = await fetch(apiBase + "/api/game-chat-outbox?serverId=" + serverId);
+    if (outboxRes.ok) {
+      const outboxData = await outboxRes.json();
+      const pending = (outboxData && Array.isArray(outboxData.messages)) ? outboxData.messages : [];
+      if (pending.length > 0) console.log("[GameChat] outbox pending=" + pending.length);
+      for (const msg of pending) {
+        const roomName = msg.kind === "crimes" ? "omerta.orgcrime" : "omerta.general";
+        const params = new URLSearchParams({ room: roomName, message: msg.message });
+        const chatRes = await fetch(window.location.origin + "/?module=Chat&action=send", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" },
+          body: params.toString()
+        });
+        const chatJson = await chatRes.json().catch(() => null);
+        const ok = chatJson && chatJson.data && chatJson.data.OK;
+        console.log("[GameChat] sent kind=" + msg.kind + " ok=" + ok);
+      }
+    }
+  } catch (err) {
+    console.warn("[GameChat] outbox error", err);
+  }
+
+  for (const ep of endpoints) {
+    const fetchUrl = window.location.origin + "/?module=Chat&action=history&room=" + ep.room + "&page=-1";
+    try {
+      console.log("[GameChat] fetch start room=" + ep.room + " url=" + fetchUrl);
+      const res = await fetch(fetchUrl);
+      console.log("[GameChat] fetch status=" + res.status + " room=" + ep.room);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const history = (data && data.data && Array.isArray(data.data.history)) ? data.data.history : [];
+      console.log("[GameChat] history count room=" + ep.room + " count=" + history.length);
+      if (history.length === 0) continue;
+      const postUrl = apiBase + "/api/game-chat";
+      const body = { serverId, kind: ep.kind, history };
+      if (serverTime) {
+        body.serverTime = serverTime;
+        body.serverTimeSyncedAt = serverTimeSyncedAt;
+      }
+      console.log("[GameChat] post start serverId=" + serverId + " kind=" + ep.kind + " count=" + history.length);
+      const postRes = await fetch(postUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      console.log("[GameChat] post status=" + postRes.status);
+      if (postRes.ok && serverTime && !gameChatServerTimeSent) {
+        gameChatServerTimeSent = true;
+      }
+    } catch (err) {
+      console.warn("[GameChat] error room=" + ep.room, err);
+    }
+  }
+}
+
+async function runGameChatPoll() {
+  try {
+    const settings = await readSettings();
+    if (settings.enabled) {
+      await fetchAndPushGameChat(settings);
+    }
+  } catch (err) {
+    if (isCtxInvalid(err)) return;
+    console.warn("[GameChat] error in poll", err);
+  }
+  gameChatPollTimer = window.setTimeout(runGameChatPoll, 2000);
+}
+
+function isCtxInvalid(err) {
+  const msg = (err && (err.message || String(err))) || "";
+  return msg.includes("Extension context invalidated");
 }
 
 if (!isDashboard) {
@@ -1523,6 +1941,7 @@ if (!isDashboard) {
   });
 
   startPolling();
+  runGameChatPoll();
 } else {
   window.addEventListener("message", async (event) => {
     if (event.source !== window) return;
@@ -1531,33 +1950,37 @@ if (!isDashboard) {
     if (!data || typeof data !== "object") return;
 
     if (data.type === "OMERTA_GET_IDENTITY") {
-      const reqServerId = data.serverId ? String(data.serverId).toUpperCase() : "";
-      const lookupKeys = {
-        LAST_PLAYER: "",
-        lastDetectedPlayer: "",
-        ROOM: "General",
-        room: "General",
-      };
-      if (reqServerId) {
-        lookupKeys[`LAST_PLAYER_${reqServerId}`] = "";
+      try {
+        const reqServerId = data.serverId ? String(data.serverId).toUpperCase() : "";
+        const lookupKeys = {
+          LAST_PLAYER: "",
+          lastDetectedPlayer: "",
+          ROOM: "General",
+          room: "General",
+        };
+        if (reqServerId) {
+          lookupKeys[`LAST_PLAYER_${reqServerId}`] = "";
+        }
+        const stored = await chrome.storage.local.get(lookupKeys);
+        let player = "";
+        if (reqServerId) {
+          player = stored[`LAST_PLAYER_${reqServerId}`] || "";
+        } else {
+          player = stored.LAST_PLAYER || stored.lastDetectedPlayer || "";
+        }
+        const room = stored.ROOM || stored.room || "General";
+        const clientId = await getOrCreateClientId();
+        window.postMessage({
+          type: "OMERTA_IDENTITY",
+          connected: Boolean(player),
+          player,
+          clientId,
+          room,
+          serverId: reqServerId
+        }, "*");
+      } catch (err) {
+        if (!isCtxInvalid(err)) console.warn("[Omerta Extension] OMERTA_GET_IDENTITY error", err);
       }
-      const stored = await chrome.storage.local.get(lookupKeys);
-      let player = "";
-      if (reqServerId) {
-        player = stored[`LAST_PLAYER_${reqServerId}`] || "";
-      } else {
-        player = stored.LAST_PLAYER || stored.lastDetectedPlayer || "";
-      }
-      const room = stored.ROOM || stored.room || "General";
-      const clientId = await getOrCreateClientId();
-      window.postMessage({
-        type: "OMERTA_IDENTITY",
-        connected: Boolean(player),
-        player,
-        clientId,
-        room,
-        serverId: reqServerId
-      }, "*");
     } else if (data.type === "OMERTA_SEND_CHAT") {
       try {
         const reqServerId = data.serverId ? String(data.serverId).toUpperCase() : "";
@@ -1629,7 +2052,7 @@ if (!isDashboard) {
           await chrome.storage.local.set(updateObj);
         }
       } catch (err) {
-        console.warn("[Omerta Extension] Failed to save active player", err);
+        if (!isCtxInvalid(err)) console.warn("[Omerta Extension] Failed to save active player", err);
       }
     } else if (data.type === "OMERTA_SET_ROOM") {
       try {
@@ -1667,6 +2090,29 @@ if (!isDashboard) {
           type: "OMERTA_CONNECT_RESULT",
           ok: false,
           error: err && err.message ? err.message : "Connect failed."
+        }, "*");
+      }
+    } else if (data.type === "OMERTA_SEND_NOW_ALL") {
+      try {
+        const response = await new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({ type: "OMERTA_SEND_NOW_ALL" }, (result) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message || "Send failed."));
+              return;
+            }
+            resolve(result);
+          });
+        });
+        window.postMessage({
+          type: "OMERTA_CONNECT_RESULT",
+          ok: response && response.ok,
+          count: Number(response && response.count) || 0
+        }, "*");
+      } catch (err) {
+        window.postMessage({
+          type: "OMERTA_CONNECT_RESULT",
+          ok: false,
+          error: err && err.message ? err.message : "Send failed."
         }, "*");
       }
     }
