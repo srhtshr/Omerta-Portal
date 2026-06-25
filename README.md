@@ -66,22 +66,27 @@ npm install
 npm start
 ```
 
-Default address: `http://localhost:3000`
+Production address: `https://omertaportal.com`
+
+> For self-hosting / local development: `http://localhost:3000`
 
 ### Extension Setup
 
+Install from the Chrome Web Store:
+**[Omerta Portal — Chrome Web Store](https://chromewebstore.google.com/detail/omerta-portal/flcbkcmfekjmipkoahgnnpijagflbpfc)**
+
+Or load unpacked for development:
 1. Open `chrome://extensions` or `edge://extensions`
 2. Enable **Developer mode**
 3. Click **Load unpacked**
-4. Select the `extension/` folder from the project root
+4. Select the `chromestore/extension/` folder
 
 ### Usage
 
-1. Start the server (`npm start` inside `server/`)
-2. Load the extension unpacked
-3. Log in to Omerta / Barafranca pages
-4. Use **Connect** (Synch) from the extension popup
-5. Open the dashboard at `http://localhost:3000`
+1. Install the extension from the Chrome Web Store
+2. Log in to Omerta / Barafranca pages
+3. Use **Connect** (Synch) from the extension popup
+4. Open the dashboard at `https://omertaportal.com`
 
 ### Rank Locks
 
@@ -166,24 +171,27 @@ npm install
 npm start
 ```
 
-Varsayılan adres: `http://localhost:3000`
+Üretim adresi: `https://omertaportal.com`
+
+> Yerel geliştirme için: `http://localhost:3000`
 
 ### Extension Kurulumu
 
+Chrome Web Store'dan yükle:
+**[Omerta Portal — Chrome Web Store](https://chromewebstore.google.com/detail/omerta-portal/flcbkcmfekjmipkoahgnnpijagflbpfc)**
+
+Geliştirme için unpacked yükleme:
 1. `chrome://extensions` veya `edge://extensions` sayfasını açın
 2. **Developer mode**'u aktif edin
 3. **Load unpacked** butonuna basın
-4. Proje kökündeki `extension/` klasörünü seçin
-
-Extension popup varsayılan olarak local server ile çalışacak şekilde hazırlanmıştır.
+4. `chromestore/extension/` klasörünü seçin
 
 ### Kullanım
 
-1. Server'ı başlatın (`server/` içinde `npm start`)
-2. Extension'ı unpacked olarak yükleyin
-3. Omerta / Barafranca sayfalarında oturum açın
-4. Extension popup'tan **Connect** (Synch) kullanın
-5. Dashboard'ı `http://localhost:3000` adresinden açın
+1. Extension'ı Chrome Web Store'dan yükleyin
+2. Omerta / Barafranca sayfalarında oturum açın
+3. Extension popup'tan **Connect** (Synch) kullanın
+4. Dashboard'ı `https://omertaportal.com` adresinden açın
 
 Dashboard:
 - Açık oyun sekmelerini algılar
@@ -219,6 +227,18 @@ Kod değiştirdikten sonra extension'ı yeniden yüklemek için:
 ---
 
 ## Changelog
+
+### v1.0.2 — 2026-06-25 (Extension)
+
+**Production release — Chrome Web Store**
+- Published to Chrome Web Store: [Omerta Portal](https://chromewebstore.google.com/detail/omerta-portal/flcbkcmfekjmipkoahgnnpijagflbpfc)
+- All API endpoints migrated to `https://omertaportal.com`
+- Removed `localhost`, `127.0.0.1`, `onrender.com` from manifest permissions and host arrays
+- `popup.js`: auto-migrates stored localhost URLs to production URL on startup
+- Dashboard "Download Extension" button now opens Chrome Web Store page
+- `extension.zip` available at `chromestore/extension.zip` for sideloading
+
+---
 
 ### v2.0.0 — 2026-06-25
 

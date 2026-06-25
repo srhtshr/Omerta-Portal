@@ -2016,7 +2016,7 @@ function renderDashboardHtml() {
         </a>
         <div style="display:inline-flex;align-items:center;gap:3px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;padding:3px 4px;margin-left:auto;">
           <button id="dashboardConnectBtn" class="button" type="button" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-weight:700;font-size:12px;cursor:pointer;transition:all 0.15s;white-space:nowrap;">↻ Synch</button>
-          <a id="downloadExtensionLink" href="https://github.com/srhtshr/Omerta-Portal/raw/main/chromestore/extension.zip" target="_blank" rel="noopener noreferrer" data-i18n="downloadExtension" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 16px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-weight:700;font-size:12px;text-decoration:none;cursor:pointer;transition:all 0.15s;white-space:nowrap;">Download Extension</a>
+          <a id="downloadExtensionLink" href="https://chromewebstore.google.com/detail/omerta-portal/flcbkcmfekjmipkoahgnnpijagflbpfc" target="_blank" rel="noopener noreferrer" data-i18n="downloadExtension" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 16px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-weight:700;font-size:12px;text-decoration:none;cursor:pointer;transition:all 0.15s;white-space:nowrap;">Download Extension</a>
         </div>
       </div>
 
