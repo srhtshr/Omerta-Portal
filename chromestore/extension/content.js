@@ -1,11 +1,8 @@
 const DASHBOARD_HOSTS = [
-  "localhost:3000",
-  "127.0.0.1:3000",
-  "omerta-portal.onrender.com",
   "omertaportal.com"
 ];
 
-const DEFAULT_API_URL = "https://omerta-portal.onrender.com";
+const DEFAULT_API_URL = "https://omertaportal.com";
 
 const isDashboard = DASHBOARD_HOSTS.some(host =>
   window.location.origin.includes(host)

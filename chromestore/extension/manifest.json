@@ -29,9 +29,6 @@
     "https://*.barafranca.com/*",
     "https://omerta.dm/*",
     "https://*.omerta.dm/*",
-    "https://omerta-portal.onrender.com/*",
-    "http://localhost:3000/*",
-    "http://127.0.0.1:3000/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -64,9 +61,6 @@
         "https://*.barafranca.com/*",
         "https://omerta.dm/*",
         "https://*.omerta.dm/*",
-        "https://omerta-portal.onrender.com/*",
-        "http://localhost:3000/*",
-        "http://127.0.0.1:3000/*"
       ],
       "js": [
         "content.js"
