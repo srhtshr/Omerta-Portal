@@ -284,7 +284,7 @@ function renderDashboardHtml() {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Omerta Portal v1.0</title>
+    <title>Omerta Portal v2.0</title>
     <style>
       :root {
         color-scheme: dark;
@@ -1987,7 +1987,7 @@ function renderDashboardHtml() {
     <div class="page">
       <div class="topbar">
         <div class="brand-row">
-          <div class="brand">Omerta Portal v1.0</div>
+          <div class="brand">Omerta Portal v2.0</div>
           <div class="lang-switcher">
             <button class="lang-btn active" id="langBtnTR" onclick="setLang('tr')"><span class="lang-label">TR</span><svg class="flag-icon" width="24" height="16" viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg"><rect width="30" height="20" fill="#E30A17"/><circle cx="11.5" cy="10" r="5.5" fill="white"/><circle cx="13.5" cy="10" r="4.3" fill="#E30A17"/><polygon fill="white" points="18.5,10 20,7.5 22.5,9 20.5,6.8 22.5,4.5 20,6 18.5,3.5 18.5,6.2 16,4.5 18,7 16,9.2 18.5,7.7"/></svg></button>
             <button class="lang-btn" id="langBtnEN" onclick="setLang('en')"><span class="lang-label">ENG</span><svg class="flag-icon" width="24" height="16" viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg"><rect width="30" height="20" fill="white"/><rect x="12.5" width="5" height="20" fill="#CF142B"/><rect y="7.5" width="30" height="5" fill="#CF142B"/></svg></button>
