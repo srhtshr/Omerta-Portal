@@ -2,3 +2,4 @@ node_modules/
 .claude/
 agents/
 *.zip
+!chromestore/extension.zip
