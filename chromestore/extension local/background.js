@@ -1,6 +1,12 @@
 ﻿// Keep-alive alarms
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create("bgKeepAlive", { periodInMinutes: 2 });
+  // Reinject content.js into already-open game tabs after extension reload
+  chrome.tabs.query({ url: OMERTA_TAB_PATTERNS }, (tabs) => {
+    (tabs || []).forEach(tab => {
+      chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ["content.js"] }).catch(() => {});
+    });
+  });
 });
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.get("bgKeepAlive", (a) => {

@@ -35,8 +35,8 @@ const SERVER_PROFILES = [
       progression: ["Rang progressie", "Rangvordering", "Rank progress", "Rank progression", "Progress to next rank", "Seviye Ilerlemesi", "Progresso no estatuto"],
       activity: ["Activiteit", "Activity"],
       bullets_field: ["Kogels"],
-      money: ["Op zak", "Contant geld"],
-      bank: ["Op bankrekening", "Bankgeld"],
+      money: ["Op zak"],
+      bank: ["Op bankrekening"],
       health: ["Leven"],
       prisonEscape: ["Uitbraken/Total Attempts"],
       crimeAttempts: ["Misdaadpogingen"],
@@ -68,7 +68,7 @@ const SERVER_PROFILES = [
       drugs: ["Estatuto com Narcóticos", "Narcs", "Drugs", "Narkotik", "Drugs"],
       rank: ["Estatuto", "Informação de estatuto", "Informação do estatuto", "Informações do estatuto", "Rank", "Rang", "Seviye"],
       progression: ["Progresso no estatuto", "Rank progress", "Rank progression", "Progress to next rank", "Rangvordering", "Rang progressie", "Seviye Ilerlemesi"],
-      activity: ["Saúde", "Activity", "Activiteit"],
+      activity: ["Activity", "Activiteit"],
       bullets_field: ["Balas"],
       money: ["Dinheiro"],
       bank: ["Na conta bancária"],
@@ -104,10 +104,10 @@ const SERVER_PROFILES = [
       rank: ["Seviye", "Rütbe", "Rank", "Rang", "Estatuto"],
       progression: ["Seviye Ilerlemesi", "Seviye İlerlemesi", "Rütbe ilerlemesi", "Rütbe gelişi", "Rank progress", "Rank progression", "Progress to next rank", "Rangvordering", "Rang progressie", "Progresso no estatuto"],
       activity: ["Aktivite", "Sağlık", "Activity", "Activiteit"],
-      bullets_field: ["Mermi", "Mermiler"],
-      money: ["Para", "Nakit"],
-      bank: ["Banka", "Bankadaki para", "Banka Hesabi", "Banka hesabi"],
-      health: ["Saglik", "Sağlık", "Saglık", "Saglik:"],
+      bullets_field: ["Mermiler"],
+      money: ["Nakit"],
+      bank: ["Banka Hesabi", "Banka Hesabı"],
+      health: ["Saglik", "Sağlık"],
       prisonEscape: ["Hapisten Kacirma/Total Attempts", "Hapisten Kaçırma/Total Attempts"],
       crimeAttempts: ["Suc Girisimleri", "Suç Girişimleri"],
       carTheftAttempts: ["Araba Calma Girisimleri", "Araba Çalma Girişimleri"],
@@ -140,15 +140,15 @@ const SERVER_PROFILES = [
       progression: ["Rank progress", "Rank progression", "Progress to next rank", "Rangvordering", "Rang progressie", "Seviye Ilerlemesi", "Progresso no estatuto"],
       activity: ["Activity", "Activiteit"],
       bullets_field: ["Bullets"],
-      money: ["Cash", "Money"],
-      bank: ["In bank account", "Bank"],
+      money: ["Cash"],
+      bank: ["In bank account"],
       health: ["Health"],
-      prisonEscape: ["Bust outs/Total Attempts", "Bust Outs/Total Attempts"],
-      crimeAttempts: ["Crime attempts", "Crime Attempts"],
-      carTheftAttempts: ["Car nicking attempts", "Car Nicking Attempts"],
-      wonRaces: ["Car races won", "Car Races Won"],
+      prisonEscape: ["Bust outs/Total Attempts"],
+      crimeAttempts: ["Crime attempts"],
+      carTheftAttempts: ["Car nicking attempts"],
+      wonRaces: ["Car races won"],
       murders: ["Kills"],
-      bulletsSpent: ["Bullets shot (Backfire)", "Bullets Shot (Backfire)"]
+      bulletsSpent: ["Bullets shot (Backfire)"]
     }
   }
 ];
@@ -810,13 +810,13 @@ function parseCooldownsFromTable(table) {
 }
 
 function matchesAnyAlias(labelText, aliases) {
-  const normalizedLabel = normalizeText(labelText).replace(/[:;.]/g, "").trim();
+  const normalizedLabel = normalizeText(labelText).replace(/[:;.?]/g, "").trim();
   if (!normalizedLabel) {
     return false;
   }
 
   return aliases.some((alias) => {
-    const normalizedAlias = normalizeText(alias).replace(/[:;.]/g, "").trim();
+    const normalizedAlias = normalizeText(alias).replace(/[:;.?]/g, "").trim();
     return normalizedLabel === normalizedAlias;
   });
 }
@@ -1089,6 +1089,11 @@ function parseCharacterProgressionFromDocument(doc) {
 }
 
 async function loadInformationDocumentViaIframe() {
+  // If current page already has the waiting table, use it directly — no iframe needed
+  if (findWaitingTableInDocument(document)) {
+    return document;
+  }
+
   if (iframeParseInFlight) {
     return null;
   }
@@ -1103,7 +1108,7 @@ async function loadInformationDocumentViaIframe() {
       await new Promise((resolve, reject) => {
         const timeoutId = window.setTimeout(() => {
           reject(new Error("Hidden iframe load timeout"));
-        }, 10000);
+        }, 5000);
 
         iframe.addEventListener("load", () => {
           clearTimeout(timeoutId);
@@ -1119,7 +1124,7 @@ async function loadInformationDocumentViaIframe() {
       });
 
       const startedAt = Date.now();
-      while (Date.now() - startedAt < 10000) {
+      while (Date.now() - startedAt < 5000) {
         const iframeDoc = iframe.contentDocument;
         if (iframeDoc) {
           const waitingTable = findWaitingTableInDocument(iframeDoc);
@@ -1129,7 +1134,7 @@ async function loadInformationDocumentViaIframe() {
         }
 
         await new Promise((resolve) => {
-          window.setTimeout(resolve, 500);
+          window.setTimeout(resolve, 300);
         });
       }
 

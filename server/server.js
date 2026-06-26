@@ -2976,7 +2976,7 @@ function renderDashboardHtml() {
         var h = parseInt(parts[0], 10) || 0;
         var m = parseInt(parts[1], 10) || 0;
         var s = parseInt(parts[2], 10) || 0;
-        var total = h * 3600 + m * 60 + s + Math.floor((Date.now() - syncedAt) / 1000);
+        var total = h * 3600 + m * 60 + s + Math.floor((Date.now() - syncedAt) / 1000) + 3;
         total = ((total % 86400) + 86400) % 86400;
         var hh = Math.floor(total / 3600);
         var mm = Math.floor((total % 3600) / 60);
@@ -4429,9 +4429,6 @@ function renderDashboardHtml() {
               lastGameChatServerId = activeSrv;
               gameChatSeenIds.general.clear();
               gameChatSeenIds.crimes.clear();
-              gameChatServerTimeBase = null;
-              if (gameChatClockInterval) { clearInterval(gameChatClockInterval); gameChatClockInterval = null; }
-              if (gameChatServerMeta) gameChatServerMeta.textContent = "";
               if (gameGeneralMessages) gameGeneralMessages.innerHTML = '<div class="chat-empty">' + escapeHtml(t("loadingGeneralChat")) + '</div>';
               if (gameCrimesMessages) gameCrimesMessages.innerHTML = '<div class="chat-empty">' + escapeHtml(t("loadingCrimesChat")) + '</div>';
             }
