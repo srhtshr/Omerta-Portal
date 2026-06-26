@@ -1981,84 +1981,6 @@ function renderDashboardHtml() {
           min-height: 160px;
         }
       }
-      /* In-page slide-up game panel — centered, 4 server tabs */
-      #gamePanelWrap {
-        position: fixed;
-        bottom: 0;
-        left: 50%;
-        width: 980px;
-        max-width: calc(100vw - 24px);
-        height: 600px;
-        background: #0d1117;
-        border: 1px solid var(--border);
-        border-top: 2px solid var(--accent);
-        border-radius: 10px 10px 0 0;
-        box-shadow: 0 -6px 40px rgba(0,0,0,0.7);
-        z-index: 9000;
-        display: flex;
-        flex-direction: column;
-        transform: translateX(-50%) translateY(calc(100% - 42px));
-        transition: transform 0.28s cubic-bezier(.4,0,.2,1);
-        overflow: hidden;
-      }
-      #gamePanelWrap.open     { transform: translateX(-50%) translateY(0); }
-      #gamePanelWrap.collapsed{ transform: translateX(-50%) translateY(calc(100% - 42px)); }
-      #gamePanelBar {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        padding: 0 8px;
-        height: 42px;
-        min-height: 42px;
-        background: #161b24;
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-        user-select: none;
-      }
-      .gpt-tab {
-        background: transparent;
-        border: none;
-        color: #888;
-        padding: 6px 22px;
-        cursor: pointer;
-        font-size: 12px;
-        font-weight: 800;
-        letter-spacing: 0.6px;
-        border-radius: 6px;
-        transition: background 0.15s, color 0.15s;
-      }
-      .gpt-tab:hover  { background: rgba(255,255,255,0.07); color: #ddd; }
-      .gpt-tab.active { background: var(--accent); color: #fff; }
-      #gamePanelToggle {
-        margin-left: auto;
-        background: none;
-        border: none;
-        color: var(--muted);
-        font-size: 15px;
-        cursor: pointer;
-        padding: 4px 10px;
-        border-radius: 4px;
-        transition: background 0.15s;
-        line-height: 1;
-      }
-      #gamePanelToggle:hover { background: rgba(255,255,255,0.07); color: #fff; }
-      #gamePanelFrameWrap {
-        flex: 1;
-        position: relative;
-        overflow: hidden;
-        background: #0d1117;
-      }
-      #gamePanelFrameWrap iframe {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        border: none;
-        display: none;
-      }
-      #gamePanelFrameWrap iframe.gpt-active { display: block; }
-
-
     </style>
   </head>
   <body>
@@ -2094,7 +2016,6 @@ function renderDashboardHtml() {
         </a>
         <div style="display:inline-flex;align-items:center;gap:3px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;padding:3px 4px;margin-left:auto;">
           <button id="dashboardConnectBtn" class="button" type="button" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-weight:700;font-size:12px;cursor:pointer;transition:all 0.15s;white-space:nowrap;">↻ Synch</button>
-
           <a id="downloadExtensionLink" href="https://chromewebstore.google.com/detail/omerta-portal/flcbkcmfekjmipkoahgnnpijagflbpfc" target="_blank" rel="noopener noreferrer" data-i18n="downloadExtension" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 16px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-weight:700;font-size:12px;text-decoration:none;cursor:pointer;transition:all 0.15s;white-space:nowrap;">Download Extension</a>
         </div>
       </div>
@@ -4801,9 +4722,6 @@ function renderDashboardHtml() {
         dashboardConnectBtn.addEventListener("click", () => {
           dashboardConnectBtn.disabled = true;
           if (stateMeta) stateMeta.textContent = "";
-          // Trigger background poll (works even without open game tabs)
-          window.postMessage({ type: "BG_POLL_NOW" }, "*");
-          // Also reload open game tabs if any exist
           window.postMessage({ type: "OMERTA_CONNECT_ALL" }, "*");
           window.setTimeout(() => {
             if (dashboardConnectBtn) {
@@ -4812,11 +4730,6 @@ function renderDashboardHtml() {
           }, 2500);
         });
       }
-
-      // On load: trigger an immediate background poll so dashboard shows fresh data
-      window.setTimeout(() => {
-        window.postMessage({ type: "BG_POLL_NOW" }, "*");
-      }, 1500);
 
 
       const cityShortcutBtn = document.getElementById("cityShortcutBtn");
@@ -6094,92 +6007,6 @@ function renderDashboardHtml() {
       }
     })();
   </script>
-
-  <!-- In-page slide-up game panel — 4 server tabs -->
-  <div id="gamePanelWrap" class="collapsed">
-    <div id="gamePanelBar">
-      <button class="gpt-tab" data-srv="tr">TR</button>
-      <button class="gpt-tab" data-srv="com">COM</button>
-      <button class="gpt-tab" data-srv="nl">NL</button>
-      <button class="gpt-tab" data-srv="pt">PT</button>
-      <button id="gamePanelToggle" title="Büyüt / Küçült">&#9650;</button>
-    </div>
-    <div id="gamePanelFrameWrap">
-      <iframe id="gpf-tr"  data-srv="tr"  src="about:blank"></iframe>
-      <iframe id="gpf-com" data-srv="com" src="about:blank"></iframe>
-      <iframe id="gpf-nl"  data-srv="nl"  src="about:blank"></iframe>
-      <iframe id="gpf-pt"  data-srv="pt"  src="about:blank"></iframe>
-    </div>
-  </div>
-
-  <script>
-    /* Panel script is intentionally AFTER the panel HTML so all elements exist on execution */
-    (function() {
-      var SERVER_HOME = {
-        tr:"https://omerta.com.tr/index.php", com:"https://barafranca.com/index.php",
-        nl:"https://barafranca.nl/index.php", pt:"https://omerta.pt/index.php"
-      };
-      var SERVER_DOMAINS = {
-        tr:"omerta.com.tr", com:"barafranca.com", nl:"barafranca.nl", pt:"omerta.pt"
-      };
-      var SERVER_LINKS = {
-        pt: { crims:"https://omerta.pt/index.php#/?module=Crimes", car:"https://omerta.pt/index.php#/?module=Cars", smuggling:"https://omerta.pt/index.php#/smuggling.php", groupCrimes:"https://omerta.pt/index.php#/?module=GroupCrimes", races:"https://omerta.pt/index.php#/races.php", bullet:"https://omerta.pt/index.php#/bullets2.php", kill:"https://omerta.pt/index.php#/?module=Murder", hospital:"https://omerta.pt/index.php#/?module=Hospital", fly:"https://omerta.pt/index.php#/?module=Travel", market:"https://omerta.pt/index.php#/?module=Shop&action=display_section&id=0", garage:"https://omerta.pt/index.php#/garage.php" },
-        nl: { crims:"https://barafranca.nl/#/?module=Crimes", car:"https://barafranca.nl/#/?module=Cars", smuggling:"https://barafranca.nl/#/smuggling.php", groupCrimes:"https://barafranca.nl/#/?module=GroupCrimes", races:"https://barafranca.nl/#/races.php", bullet:"https://barafranca.nl/#/bullets2.php", kill:"https://barafranca.nl/#/?module=Murder", hospital:"https://barafranca.nl/#/?module=Hospital", fly:"https://barafranca.nl/#/?module=Travel", market:"https://barafranca.nl/#/?module=Shop&action=display_section&id=0", garage:"https://barafranca.nl/#/garage.php" },
-        com:{ crims:"https://barafranca.com/#/?module=Crimes", car:"https://barafranca.com/#/?module=Cars", smuggling:"https://barafranca.com/#/smuggling.php", groupCrimes:"https://barafranca.com/#/?module=GroupCrimes", races:"https://barafranca.com/#/races.php", bullet:"https://barafranca.com/#/bullets2.php", kill:"https://barafranca.com/#/?module=Murder", hospital:"https://barafranca.com/#/?module=Hospital", fly:"https://barafranca.com/#/?module=Travel", market:"https://barafranca.com/#/?module=Shop&action=display_section&id=0", garage:"https://barafranca.com/#/garage.php" },
-        tr: { crims:"https://omerta.com.tr/index.php#/?module=Crimes", car:"https://omerta.com.tr/index.php#/?module=Cars", smuggling:"https://omerta.com.tr/index.php#/smuggling.php", groupCrimes:"https://omerta.com.tr/index.php#/?module=GroupCrimes", races:"https://omerta.com.tr/index.php#/races.php", bullet:"https://omerta.com.tr/index.php#/bullets2.php", kill:"https://omerta.com.tr/index.php#/?module=Murder", hospital:"https://omerta.com.tr/index.php#/?module=Hospital", fly:"https://omerta.com.tr/index.php#/?module=Travel", market:"https://omerta.com.tr/index.php#/?module=Shop&action=display_section&id=0", garage:"https://omerta.com.tr/index.php#/garage.php" }
-      };
-
-      var _activeSrv = null;
-      var _panelOpen = false;
-
-      function gp(id) { return document.getElementById(id); }
-
-      function getActiveSrv() {
-        if (_activeSrv) return _activeSrv;
-        try { var s = localStorage.getItem("omerta_active_server_filter"); if (s && s !== "ALL") return s.toLowerCase(); } catch(_) {}
-        return "tr";
-      }
-
-      function gptActivate(srv, expand) {
-        _activeSrv = srv;
-        document.querySelectorAll(".gpt-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.srv === srv); });
-        document.querySelectorAll("#gamePanelFrameWrap iframe").forEach(function(f){ f.classList.toggle("gpt-active", f.dataset.srv === srv); });
-        var fr = gp("gpf-" + srv);
-        if (fr && fr.src === "about:blank") { fr.src = SERVER_HOME[srv]; }
-        if (expand !== false) {
-          _panelOpen = true;
-          var w = gp("gamePanelWrap"); if (w) { w.classList.remove("collapsed"); w.classList.add("open"); }
-          var tg = gp("gamePanelToggle"); if (tg) tg.textContent = "▼";
-        }
-      }
-
-      // Panel bar: tab clicks + toggle
-      gp("gamePanelBar").addEventListener("click", function(e) {
-        var tab = e.target.closest(".gpt-tab");
-        if (tab) { gptActivate(tab.dataset.srv, true); return; }
-        _panelOpen = !_panelOpen;
-        var w = gp("gamePanelWrap"); w.classList.toggle("open", _panelOpen); w.classList.toggle("collapsed", !_panelOpen);
-        var tg = gp("gamePanelToggle"); if (tg) tg.textContent = _panelOpen ? "▼" : "▲";
-      });
-
-      // Quick link clicks → open panel + navigate active iframe
-      ["crims","car","smuggling","groupCrimes","races","bullet","kill","hospital","fly","market","garage"].forEach(function(key) {
-        var el = document.getElementById("link-" + key);
-        if (!el) return;
-        el.addEventListener("click", function(e) {
-          var srv = _activeSrv || getActiveSrv();
-          var url = (el.href && el.href.startsWith("https://")) ? el.href : (SERVER_LINKS[srv] || SERVER_LINKS.tr)[key];
-          if (!url) return;
-          e.preventDefault();
-          gptActivate(srv, true);
-          var fr = gp("gpf-" + srv);
-          if (fr) fr.src = url;
-        });
-      });
-    })();
-  </script>
-
-
 
   </body>
 </html>`;
