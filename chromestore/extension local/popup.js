@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = "https://omertaportal.com";
+const DEFAULT_API_URL = "http://localhost:3000";
 
 async function getOrCreateClientId() {
   let stored = await chrome.storage.local.get("CLIENT_ID");
@@ -132,7 +132,7 @@ async function applySimplifiedDefaults() {
   ]);
   const currentRoom = existing.ROOM || existing.room || existing.ACTIVE_ROOM || existing.activeRoom || STORED_ROOM_NAME;
   const storedUrl = existing.API_URL || existing.apiUrl || "";
-  const isDevUrl = !storedUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(storedUrl) || storedUrl.includes("onrender.com");
+  const isDevUrl = !storedUrl || storedUrl.includes("onrender.com");
   const currentApiUrl = isDevUrl ? DEFAULT_SETTINGS.API_URL : storedUrl;
   const payload = {
     ENABLED: typeof existing.ENABLED === "boolean" ? existing.ENABLED : true,
@@ -171,12 +171,17 @@ async function loadSettingsAndStatus() {
   statusParserError.textContent = lastParserError || "-";
   statusRoom.textContent = readStatusValue(settings, "ACTIVE_ROOM", "activeRoom") || readStatusValue(settings, "ROOM", "room") || "General";
 
+  // Check if a game tab is actually open right now
+  const liveTabs = await getOmertaTabs();
   if (lastError) {
     statusConnection.textContent = "Error";
     statusConnection.className = "error";
-  } else if (lastUpdate) {
-    statusConnection.textContent = "Connected";
+  } else if (liveTabs.length > 0) {
+    statusConnection.textContent = "Connected (" + liveTabs.length + " tab)";
     statusConnection.className = "connected";
+  } else if (lastUpdate) {
+    statusConnection.textContent = "Disconnected (last: " + formatDateTime(lastUpdate) + ")";
+    statusConnection.className = "error";
   } else {
     statusConnection.textContent = "Waiting...";
     statusConnection.className = "waiting";
@@ -195,21 +200,26 @@ async function sendNow() {
   await applySimplifiedDefaults();
 
   const tabs = await getOmertaTabs();
+
   if (tabs.length === 0) {
-    setFeedback(settingsFeedback, "error", "No open Omerta tab found.");
+    // No open game tabs — try to open background sessions for saved credentials
+    const stored = await chrome.storage.local.get(["gameCredentials"]);
+    const creds = stored.gameCredentials || {};
+    const domains = Object.keys(creds);
+    if (domains.length === 0) {
+      setFeedback(settingsFeedback, "error", "No credentials saved. Use Hesaplar to save login.");
+      return;
+    }
+    setFeedback(settingsFeedback, "success", "Opening background sessions...");
+    chrome.runtime.sendMessage({ type: "BG_POLL_NOW" }, () => {
+      window.setTimeout(() => loadSettingsAndStatus(), 3000);
+    });
     return;
   }
 
   try {
-    await Promise.all(
-      tabs.map(async (tab) => {
-        await chrome.tabs.reload(tab.id);
-      })
-    );
-
-    window.setTimeout(() => {
-      loadSettingsAndStatus();
-    }, 2000);
+    await Promise.all(tabs.map(async (tab) => { await chrome.tabs.reload(tab.id); }));
+    window.setTimeout(() => { loadSettingsAndStatus(); }, 2000);
     setFeedback(settingsFeedback, "success", "Refreshing " + tabs.length + " Omerta tab(s)...");
   } catch (error) {
     await chrome.storage.local.set({ LAST_ERROR: error.message, lastError: error.message });

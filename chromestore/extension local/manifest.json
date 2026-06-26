@@ -10,11 +10,25 @@
   },
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "declarativeNetRequest",
+    "cookies",
+    "alarms"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "game_frame_rules",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "host_permissions": [
     "https://omertaportal.com/*",
     "https://*.omertaportal.com/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
     "https://barafranca.nl/*",
     "https://*.barafranca.nl/*",
     "https://barafranca.pt/*",
@@ -47,6 +61,8 @@
       "matches": [
         "https://omertaportal.com/*",
         "https://*.omertaportal.com/*",
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*",
         "https://barafranca.nl/*",
         "https://*.barafranca.nl/*",
         "https://barafranca.pt/*",
@@ -65,7 +81,8 @@
       "js": [
         "content.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ]
 }

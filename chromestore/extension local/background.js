@@ -1,3 +1,22 @@
+﻿// Keep-alive alarms
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.alarms.create("bgKeepAlive", { periodInMinutes: 2 });
+});
+chrome.runtime.onStartup.addListener(() => {
+  chrome.alarms.get("bgKeepAlive", (a) => {
+    if (!a) chrome.alarms.create("bgKeepAlive", { periodInMinutes: 2 });
+  });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "bgKeepAlive") return;
+  chrome.tabs.query({ url: OMERTA_TAB_PATTERNS }, (tabs) => {
+    (tabs || []).forEach(tab => {
+      chrome.tabs.sendMessage(tab.id, { type: "SEND_NOW" }).catch(() => {});
+    });
+  });
+});
+
 const OMERTA_TAB_PATTERNS = [
   "*://barafranca.nl/*",
   "*://*.barafranca.nl/*",
@@ -14,6 +33,8 @@ const OMERTA_TAB_PATTERNS = [
   "*://omerta.dm/*",
   "*://*.omerta.dm/*"
 ];
+
+// ─── Message Handlers ─────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message) return;
@@ -36,6 +57,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "FETCH_GAME_MODULE") {
+    (async () => {
+      try {
+        const { url, domain } = message;
+        const tabs = await chrome.tabs.query({ url: OMERTA_TAB_PATTERNS });
+        const gameTab = tabs.find(t => t.url && t.url.includes(domain));
+        if (!gameTab) { sendResponse({ ok: false, error: "no_game_tab" }); return; }
+        try {
+          const result = await chrome.tabs.sendMessage(gameTab.id, { type: "FETCH_GAME_MODULE", url });
+          sendResponse(result || { ok: false, error: "no_response" });
+        } catch (err) {
+          sendResponse({ ok: false, error: err && err.message ? err.message : "tab_message_failed" });
+        }
+      } catch (error) {
+        sendResponse({ ok: false, error: error && error.message ? error.message : "fetch_routing_failed" });
+      }
+    })();
+    return true;
+  }
+
   if (message.type === "OMERTA_SEND_NOW_ALL") {
     (async () => {
       try {
@@ -45,14 +86,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ ok: false, error: "No open Omerta tab found." });
           return;
         }
-        // Try SEND_NOW on each tab; if no content script listener, reload that tab
         await Promise.all(
           validTabs.map(async (tab) => {
             try {
               await chrome.tabs.sendMessage(tab.id, { type: "SEND_NOW" });
             } catch (_e) {
-              // Content script not ready on this tab — reload so it initializes
-              try { await chrome.tabs.reload(tab.id); } catch (_r) {}
+              try { await chrome.tabs.reload(tab.id); } catch (_r) { }
             }
           })
         );
@@ -63,4 +102,5 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     })();
     return true;
   }
+
 });

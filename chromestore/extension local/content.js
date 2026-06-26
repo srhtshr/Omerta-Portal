@@ -1,8 +1,10 @@
 const DASHBOARD_HOSTS = [
-  "omertaportal.com"
+  "omertaportal.com",
+  "localhost",
+  "127.0.0.1"
 ];
 
-const DEFAULT_API_URL = "https://omertaportal.com";
+const DEFAULT_API_URL = "http://localhost:3000";
 
 const isDashboard = DASHBOARD_HOSTS.some(host =>
   window.location.origin.includes(host)
@@ -33,8 +35,15 @@ const SERVER_PROFILES = [
       progression: ["Rang progressie", "Rangvordering", "Rank progress", "Rank progression", "Progress to next rank", "Seviye Ilerlemesi", "Progresso no estatuto"],
       activity: ["Activiteit", "Activity"],
       bullets_field: ["Kogels"],
-      money: ["Contant geld"],
-      bank: ["Bankgeld"]
+      money: ["Op zak", "Contant geld"],
+      bank: ["Op bankrekening", "Bankgeld"],
+      health: ["Leven"],
+      prisonEscape: ["Uitbraken/Total Attempts"],
+      crimeAttempts: ["Misdaadpogingen"],
+      carTheftAttempts: ["Autojatpogingen"],
+      wonRaces: ["Autoraces gewonnen"],
+      murders: ["Moorden"],
+      bulletsSpent: ["Kogels geschoten (Backfire)"]
     }
   },
   {
@@ -62,7 +71,14 @@ const SERVER_PROFILES = [
       activity: ["Saúde", "Activity", "Activiteit"],
       bullets_field: ["Balas"],
       money: ["Dinheiro"],
-      bank: ["Na conta bancária"]
+      bank: ["Na conta bancária"],
+      health: ["Saúde", "Saude"],
+      prisonEscape: ["Evasões de prisões/Total Attempts", "Evasoes de prisoes/Total Attempts"],
+      crimeAttempts: ["Tentativas de crime"],
+      carTheftAttempts: ["Assalto a carros"],
+      wonRaces: ["Corridas de carro ganhas"],
+      murders: ["Mortes"],
+      bulletsSpent: ["Balas disparadas (Ripostou)"]
     }
   },
   {
@@ -124,8 +140,15 @@ const SERVER_PROFILES = [
       progression: ["Rank progress", "Rank progression", "Progress to next rank", "Rangvordering", "Rang progressie", "Seviye Ilerlemesi", "Progresso no estatuto"],
       activity: ["Activity", "Activiteit"],
       bullets_field: ["Bullets"],
-      money: ["Money"],
-      bank: ["Bank"]
+      money: ["Cash", "Money"],
+      bank: ["In bank account", "Bank"],
+      health: ["Health"],
+      prisonEscape: ["Bust outs/Total Attempts", "Bust Outs/Total Attempts"],
+      crimeAttempts: ["Crime attempts", "Crime Attempts"],
+      carTheftAttempts: ["Car nicking attempts", "Car Nicking Attempts"],
+      wonRaces: ["Car races won", "Car Races Won"],
+      murders: ["Kills"],
+      bulletsSpent: ["Bullets shot (Backfire)", "Bullets Shot (Backfire)"]
     }
   }
 ];
@@ -1901,7 +1924,16 @@ function isCtxInvalid(err) {
 }
 
 if (!isDashboard) {
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message && message.type === "FETCH_GAME_MODULE") {
+      fetch(message.url, { credentials: "include" })
+        .then(r => r.text())
+        .then(html => sendResponse({ ok: true, html }))
+        .catch(err => sendResponse({ ok: false, error: err && err.message ? err.message : "fetch_failed" }));
+      return true;
+    }
+
     if (!message || message.type !== "SEND_NOW") {
       return;
     }
@@ -2113,6 +2145,109 @@ if (!isDashboard) {
           error: err && err.message ? err.message : "Send failed."
         }, "*");
       }
+    } else if (data.type === "OPEN_GAME_POPUP") {
+      try {
+        chrome.runtime.sendMessage({ type: "OPEN_GAME_POPUP", url: data.url, width: data.width, height: data.height });
+      } catch (_e) {}
+    } else if (data.type === "FETCH_GAME_MODULE") {
+      try {
+        chrome.runtime.sendMessage({ type: "FETCH_GAME_MODULE", url: data.url, domain: data.domain }, function(result) {
+          window.postMessage({ type: "FETCH_GAME_MODULE_RESULT", ok: result && result.ok, html: result && result.html, error: result && result.error }, "*");
+        });
+      } catch (_e) {
+        window.postMessage({ type: "FETCH_GAME_MODULE_RESULT", ok: false, error: "extension_error" }, "*");
+      }
     }
   });
 }
+
+
+// Popup mode: inject custom UI when opened as chrome.windows.create popup
+(function() {
+  if (!window.opener) return;
+  const host = window.location.hostname;
+  const isGamePage = ["barafranca.nl","barafranca.pt","omerta.pt","barafranca.com.tr","omerta.com.tr","barafranca.com","omerta.dm"].some(h => host === h || host.endsWith("." + h));
+  if (!isGamePage) return;
+
+  function injectPopupStyles() {
+    const style = document.createElement("style");
+    style.id = "omerta-portal-popup-css";
+    style.textContent = `
+      /* Hide game navigation and chrome */
+      #navigation, #nav, .navigation, nav.main-nav,
+      #header > *:not(#content):not(.content),
+      .header-wrap, .site-header,
+      #top-bar, .top-bar, #topbar,
+      #footer, .footer, footer,
+      #sidebar, .sidebar, .side-menu,
+      .advertisement, .ad-banner,
+      #ranking-sidebar, .ranking-block,
+      .online-users, #online-block,
+      .bottom-menu, #bottom-menu,
+      .breadcrumb, #breadcrumb { display: none !important; }
+
+      /* Dark base */
+      html, body {
+        background: #0d1117 !important;
+        color: #e6edf3 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      /* Main content full width */
+      #content, .content, #main, .main, #page-content, .page-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 12px !important;
+        float: none !important;
+      }
+
+      /* Tables */
+      table.thinline, table {
+        border-collapse: collapse !important;
+        width: 100% !important;
+      }
+      table.thinline td, table.thinline th,
+      table td, table th {
+        border: 1px solid #30363d !important;
+        padding: 6px 10px !important;
+        color: #e6edf3 !important;
+        background: #161b22 !important;
+      }
+      table.thinline .tableheader td,
+      .tableheader { background: #1f2937 !important; color: #58a6ff !important; font-weight: 700 !important; }
+
+      /* Inputs & buttons */
+      input, select, textarea {
+        background: #161b22 !important;
+        border: 1px solid #30363d !important;
+        color: #e6edf3 !important;
+        border-radius: 6px !important;
+        padding: 4px 8px !important;
+      }
+      input[type="submit"], button, .button {
+        background: #1f6feb !important;
+        border: none !important;
+        color: #fff !important;
+        border-radius: 6px !important;
+        padding: 6px 16px !important;
+        cursor: pointer !important;
+        font-weight: 600 !important;
+      }
+      input[type="submit"]:hover, button:hover { background: #388bfd !important; }
+
+      /* Links */
+      a { color: #58a6ff !important; }
+      a:hover { color: #79c0ff !important; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  if (document.head) {
+    injectPopupStyles();
+  } else {
+    document.addEventListener("DOMContentLoaded", injectPopupStyles);
+  }
+})();
