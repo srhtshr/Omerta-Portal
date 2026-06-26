@@ -2077,53 +2077,53 @@ function renderDashboardHtml() {
               </div>
               <div class="cooldowns-header-links">
                 <div class="quick-links-container" id="quickLinks">
-                <a class="quick-link-item" id="link-crims" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-crims" href="#">
                   <span class="quick-link-title">Crims</span>
                   <img class="quick-link-icon" src="/icons/Crims.png" alt="Crims">
                 </a>
-                <a class="quick-link-item" id="link-car" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-car" href="#">
                   <span class="quick-link-title">Car</span>
                   <img class="quick-link-icon" src="/icons/Car.png" alt="Car">
                 </a>
-                <a class="quick-link-item" id="link-smuggling" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-smuggling" href="#">
                   <span class="quick-link-title">Smuggling</span>
                   <img class="quick-link-icon" src="/icons/Alchol-Drugs.png" alt="Smuggling">
                 </a>
-                <a class="quick-link-item" id="link-groupCrimes" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-groupCrimes" href="#">
                   <span class="quick-link-title">Crimes</span>
                   <img class="quick-link-icon" src="/icons/Crimes.png" alt="Crimes">
                 </a>
-                <a class="quick-link-item" id="link-races" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-races" href="#">
                   <span class="quick-link-title">Races</span>
                   <img class="quick-link-icon" src="/icons/Races.png" alt="Races">
                 </a>
-                <a class="quick-link-item" id="link-bullet" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-bullet" href="#">
                   <span class="quick-link-title">Bullet</span>
                   <img class="quick-link-icon" src="/icons/Bullet.png" alt="Bullet">
                 </a>
                 
                 <div class="quick-link-spacer"></div>
  
-                <a class="quick-link-item" id="link-kill" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-kill" href="#">
                   <span class="quick-link-title">Kill</span>
                   <img class="quick-link-icon" src="/icons/Kill.png" alt="Kill">
                 </a>
-                <a class="quick-link-item" id="link-hospital" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-hospital" href="#">
                   <span class="quick-link-title">Hospital</span>
                   <img class="quick-link-icon" src="/icons/Hospital.png" alt="Hospital">
                 </a>
  
                 <div class="quick-link-spacer"></div>
  
-                <a class="quick-link-item" id="link-fly" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-fly" href="#">
                   <span class="quick-link-title">Fly</span>
                   <img class="quick-link-icon" src="/icons/Fly.png" alt="Fly">
                 </a>
-                <a class="quick-link-item" id="link-market" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-market" href="#">
                   <span class="quick-link-title">Market</span>
                   <img class="quick-link-icon" src="/icons/Market.png" alt="Market">
                 </a>
-                <a class="quick-link-item" id="link-garage" href="#" target="_blank" rel="noopener noreferrer">
+                <a class="quick-link-item" id="link-garage" href="#">
                   <span class="quick-link-title">Garage</span>
                   <img class="quick-link-icon" src="/icons/Garage.png" alt="Garage">
                 </a>
@@ -3640,10 +3640,47 @@ function renderDashboardHtml() {
         keys.forEach(key => {
           const el = document.getElementById("link-" + key);
           if (el) {
-            el.href = links[key] || "#";
+            const url = links[key] || "#";
+            el.href = url;
+            el.setAttribute("data-game-url", url);
           }
         });
       }
+
+function openGamePopup(url) {
+        window.postMessage({ type: "OMERTA_OPEN_POPUP", url: url }, "*");
+      }
+
+      (function() {
+        var popupOpen = false;
+        window.addEventListener("message", function(e) {
+          if (!e.data) return;
+          if (e.data.type === "OMERTA_POPUP_INFO") {
+            var r = e.data.resp;
+            popupOpen = !!(r && r.left != null);
+          }
+          if (e.data.type === "OMERTA_POPUP_CLOSED") {
+            popupOpen = false;
+          }
+        });
+        document.addEventListener("click", function(e) {
+          if (!popupOpen) return;
+          if (e.target.closest(".quick-link-item")) return;
+          window.postMessage({ type: "OMERTA_CLOSE_POPUP" }, "*");
+          popupOpen = false;
+        });
+      })();
+
+      updateQuickLinks();
+
+      document.getElementById("quickLinks").addEventListener("click", function(e) {
+        var item = e.target.closest(".quick-link-item");
+        if (!item) return;
+        e.preventDefault();
+        var url = item.getAttribute("data-game-url");
+        if (!url || url === "#" || url.indexOf("localhost") !== -1 || url.indexOf("omertaportal") !== -1) return;
+        openGamePopup(url);
+      });
 
       function updateActiveCardHighlight() {
         updateQuickLinks();
@@ -6137,6 +6174,49 @@ function isRoomOwnerInactive(roomData) {
 
   return getServerTime() - updatedAt > 90;
 }
+
+app.get("/test-iframe", (_req, res) => {
+  res.status(200).send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>TR iframe test</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; color: #eee; font-family: monospace; display: flex; flex-direction: column; height: 100vh; }
+  #controls { padding: 10px 14px; background: #1a1a1a; border-bottom: 1px solid #333; display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
+  #controls button { background: #2563eb; color: #fff; border: none; padding: 6px 14px; border-radius: 5px; cursor: pointer; font-size: 13px; }
+  #controls button:hover { background: #1d4ed8; }
+  #log { font-size: 11px; color: #aaa; flex: 1 0 auto; }
+  iframe { width: 100%; flex: 1; border: none; min-height: 0; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <strong style="color:#60a5fa">TR iframe test</strong>
+  <button onclick="loadUrl('https://omerta.com.tr/index.php')">index.php</button>
+  <button onclick="loadUrl('https://omerta.com.tr/index.php#/?module=Crimes')">Crimes</button>
+  <button onclick="loadUrl('https://omerta.com.tr/index.php#/?module=Cars')">Cars</button>
+  <button onclick="fr.src=fr.src">Reload iframe</button>
+  <span id="log">—</span>
+</div>
+<iframe id="fr" src="https://omerta.com.tr/index.php" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+<script>
+  var fr = document.getElementById('fr');
+  var log = document.getElementById('log');
+  fr.addEventListener('load', function() {
+    try {
+      var url = fr.contentWindow.location.href;
+      log.textContent = 'loaded: ' + url;
+    } catch(e) {
+      log.textContent = 'loaded (cross-origin — URL hidden)';
+    }
+  });
+  function loadUrl(url) { fr.src = url; log.textContent = 'navigating → ' + url; }
+</script>
+</body>
+</html>`);
+});
 
 app.get("/", (_req, res) => {
   res.status(200).send(renderDashboardHtml());

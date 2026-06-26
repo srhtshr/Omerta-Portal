@@ -14,7 +14,8 @@
     "scripting",
     "declarativeNetRequest",
     "cookies",
-    "alarms"
+    "alarms",
+    "windows"
   ],
   "declarative_net_request": {
     "rule_resources": [
@@ -58,6 +59,15 @@
     }
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://omertaportal.com/*",
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "js": ["popup-bridge.js"],
+      "run_at": "document_end"
+    },
     {
       "matches": [
         "https://omertaportal.com/*",
