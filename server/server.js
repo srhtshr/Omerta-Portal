@@ -2891,6 +2891,26 @@ function renderDashboardHtml() {
       const gameGeneralFeedback = document.getElementById("gameGeneralFeedback");
       const gameCrimesFeedback = document.getElementById("gameCrimesFeedback");
       const dashboardNicknames = { tr: "-", com: "-", nl: "-", pt: "-" };
+      let pendingPrivateImageData = "";
+      let pendingPrivateImageName = "";
+      const privateImagePreview = document.createElement("div");
+      const privateImageLightbox = document.createElement("div");
+      privateImagePreview.id = "privateImagePreview";
+      privateImagePreview.style.display = "none";
+      privateImagePreview.style.position = "absolute";
+      privateImagePreview.style.left = "10px";
+      privateImagePreview.style.top = "8px";
+      privateImagePreview.style.zIndex = "3";
+      privateImagePreview.style.maxWidth = "calc(100% - 136px)";
+      privateImageLightbox.id = "privateImageLightbox";
+      privateImageLightbox.style.display = "none";
+      privateImageLightbox.style.position = "fixed";
+      privateImageLightbox.style.inset = "0";
+      privateImageLightbox.style.background = "rgba(3,6,12,0.82)";
+      privateImageLightbox.style.zIndex = "9999";
+      privateImageLightbox.style.alignItems = "center";
+      privateImageLightbox.style.justifyContent = "center";
+      privateImageLightbox.style.padding = "24px";
 
       let uiMessages = LANG[currentLang] || LANG.en;
 
@@ -3974,6 +3994,52 @@ function openGamePopup(url) {
         });
       }
 
+      function resetPrivateImagePreview() {
+        pendingPrivateImageData = "";
+        pendingPrivateImageName = "";
+        privateImagePreview.style.display = "none";
+        privateImagePreview.innerHTML = "";
+        if (messageInput) {
+          messageInput.style.paddingTop = "";
+        }
+      }
+
+      function updatePrivateImagePreview() {
+        if (!pendingPrivateImageData) {
+          resetPrivateImagePreview();
+          return;
+        }
+
+        privateImagePreview.style.display = "block";
+        privateImagePreview.innerHTML =
+          '<button type="button" id="privateImagePreviewOpenBtn" style="display:inline-flex; align-items:center; gap:8px; max-width:100%; padding:5px 8px; border:1px solid var(--border); border-radius:999px; background:rgba(18,24,34,0.96); cursor:pointer;">' +
+            '<img src="' + escapeHtml(pendingPrivateImageData) + '" alt="Pasted screenshot" style="width:28px; height:28px; border-radius:7px; border:1px solid var(--border); object-fit:cover; flex-shrink:0;">' +
+            '<span style="font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">' + escapeHtml(pendingPrivateImageName || "Pasted image") + '</span>' +
+          '</button>' +
+          '<button type="button" id="privateImageClearBtn" class="button" style="margin-left:6px; padding:2px 8px; font-size:11px; min-height:auto; line-height:1.6; vertical-align:middle;">×</button>';
+
+        if (messageInput) {
+          messageInput.style.paddingTop = "46px";
+        }
+
+        const clearBtn = document.getElementById("privateImageClearBtn");
+        if (clearBtn) {
+          clearBtn.addEventListener("click", resetPrivateImagePreview);
+        }
+        const openBtn = document.getElementById("privateImagePreviewOpenBtn");
+        if (openBtn) {
+          openBtn.addEventListener("click", () => {
+            const lightboxImg = document.getElementById("privateImageLightboxImg");
+            const lightboxLabel = document.getElementById("privateImageLightboxLabel");
+            if (lightboxImg && lightboxLabel) {
+              lightboxImg.src = pendingPrivateImageData;
+              lightboxLabel.textContent = pendingPrivateImageName || "Image";
+              privateImageLightbox.style.display = "flex";
+            }
+          });
+        }
+      }
+
       function renderChat(room, messages) {
         const currentSender = getChatSender();
 
@@ -3997,7 +4063,7 @@ function openGamePopup(url) {
           if (pinnedMessages.length > 0) {
             pinnedContainer.style.display = "block";
             pinnedContainer.innerHTML = pinnedMessages.map((msg) => {
-              const cleanText = String(msg.message || "").replace(/<\\/?[^>]+(>|$)/g, "");
+              const cleanText = msg.imageData ? "[Image]" : String(msg.message || "").replace(/<\\/?[^>]+(>|$)/g, "");
               return '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 8px; border-bottom:1px solid rgba(255,255,255,.05); font-size:11px;">' +
                 '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);">📌 <b style="color:var(--yellow);">' + escapeHtml(msg.player || "-") + ':</b> ' + escapeHtml(cleanText) + '</span>' +
                 '<button type="button" class="delete-btn" data-msg-id="' + escapeHtml(msg.id || "") + '" onclick="togglePinMessage(this.dataset.msgId)" title="Unpin">✕</button>' +
@@ -4100,6 +4166,12 @@ function openGamePopup(url) {
           const playerName = escapeHtml(message.player || "-");
           const playerProfileUrl = getPlayerProfileBaseUrl(playerServerId) + encodeURIComponent(message.player || "");
           const msgText = renderChatMessageText(rawMessageText);
+          const imageHtml = message.imageData
+            ? '<button type="button" class="private-chat-image-btn" data-image-src="' + escapeHtml(message.imageData) + '" data-image-name="' + escapeHtml(message.imageName || "Image") + '" style="display:inline-flex; align-items:center; gap:6px; margin-left:8px; padding:4px 6px; border:1px solid var(--border); border-radius:999px; background:rgba(255,255,255,0.03); cursor:pointer; vertical-align:middle;">' +
+                '<img src="' + escapeHtml(message.imageData) + '" alt="Shared screenshot" style="width:28px; height:28px; border-radius:6px; object-fit:cover; display:block;">' +
+                '<span style="font-size:10px; color:var(--muted); max-width:84px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(message.imageName || "Image") + '</span>' +
+              '</button>'
+            : "";
           const nickColor = isOwn ? "#98c379" : "#5aa9ff";
 
           const srvBadgeColor = { tr: '#e06c75', com: '#61afef', nl: '#e5c07b', pt: '#98c379' };
@@ -4114,7 +4186,8 @@ function openGamePopup(url) {
             '<span class="chat-time">[' + escapeHtml(timeStr) + ']</span>' +
             serverBadge +
             '<a class="chat-player" href="' + escapeHtml(playerProfileUrl) + '" target="_blank" rel="noopener noreferrer" style="color:' + nickColor + ';">' + playerName + '</a>' +
-            '<span class="chat-text"> ' + msgText + '</span>' +
+            '<span class="chat-text">' + (rawMessageText ? ' ' + msgText : '') + '</span>' +
+            imageHtml +
             ' ' + pinBtn +
             (replyBtn ? ' ' + replyBtn : '') +
             '</div>';
@@ -4892,14 +4965,14 @@ function openGamePopup(url) {
         setConnectionIndicator(chatFeedback, isConnected && myPlayerName ? "online" : "offline", myPlayerName ? "Connected as " + myPlayerName : "Not connected");
 
         let message = messageInput.value.trim();
-        message = message.replace(/\s*\(\)/g, "").trim();
+        message = message.replace(/\\s*\\(\\)/g, "").trim();
 
         if (!isConnected || !myPlayerName) {
           setConnectionIndicator(chatFeedback, "error", "Open Omerta and wait for extension to connect.");
           return;
         }
 
-        if (!message) {
+        if (!message && !pendingPrivateImageData) {
           setConnectionIndicator(chatFeedback, "error", "Message cannot be empty.");
           return;
         }
@@ -4914,7 +4987,9 @@ function openGamePopup(url) {
               room: getChatRoomKey(currentRoom),
               player: myPlayerName,
               clientId: myClientId,
-              message
+              message,
+              imageData: pendingPrivateImageData,
+              imageName: pendingPrivateImageName
             })
           });
 
@@ -4925,6 +5000,7 @@ function openGamePopup(url) {
 
           clearActiveTemplateState();
           messageInput.value = "";
+          resetPrivateImagePreview();
           updateChatFormState();
           loadStateAndChat();
         } catch (error) {
@@ -4943,6 +5019,50 @@ function openGamePopup(url) {
         gameCrimesForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           await sendGameChatMessage("crimes", gameCrimesInput, gameCrimesFeedback);
+        });
+      }
+
+      if (chatForm && messageInput) {
+        const privateChatRow = messageInput.closest(".chat-row");
+        if (privateChatRow) {
+          privateChatRow.appendChild(privateImagePreview);
+        }
+        privateImageLightbox.innerHTML = '<div style="position:relative; max-width:min(92vw, 1200px); max-height:92vh; display:flex; align-items:center; justify-content:center;"><button type="button" id="privateImageLightboxClose" style="position:absolute; top:-12px; right:-12px; width:34px; height:34px; border-radius:999px; border:1px solid rgba(255,255,255,0.18); background:rgba(15,19,26,0.92); color:white; cursor:pointer; font-size:18px;">×</button><img id="privateImageLightboxImg" src="" alt="Expanded screenshot" style="max-width:100%; max-height:90vh; border-radius:12px; border:1px solid var(--border); box-shadow:0 20px 60px rgba(0,0,0,0.45);"><div id="privateImageLightboxLabel" style="position:absolute; left:12px; bottom:12px; padding:6px 10px; border-radius:999px; background:rgba(15,19,26,0.85); color:var(--muted); font-size:11px;"></div></div>';
+        document.body.appendChild(privateImageLightbox);
+        privateImageLightbox.addEventListener("click", (event) => {
+          if (event.target === privateImageLightbox || event.target.id === "privateImageLightboxClose") {
+            privateImageLightbox.style.display = "none";
+          }
+        });
+        messageInput.addEventListener("paste", (event) => {
+          const clipboardItems = Array.from((event.clipboardData && event.clipboardData.items) || []);
+          const imageItem = clipboardItems.find((item) => item && item.type && item.type.startsWith("image/"));
+          if (!imageItem) {
+            return;
+          }
+
+          const file = imageItem.getAsFile();
+          if (!file) {
+            return;
+          }
+
+          event.preventDefault();
+          if (file.size > 4 * 1024 * 1024) {
+            setConnectionIndicator(chatFeedback, "error", "Image is too large. Max 4 MB.");
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = () => {
+            pendingPrivateImageData = typeof reader.result === "string" ? reader.result : "";
+            pendingPrivateImageName = file.name || "pasted-image.png";
+            updatePrivateImagePreview();
+            setConnectionIndicator(chatFeedback, "online", "Image pasted. Ready to send.");
+          };
+          reader.onerror = () => {
+            setConnectionIndicator(chatFeedback, "error", "Could not read pasted image.");
+          };
+          reader.readAsDataURL(file);
         });
       }
 
@@ -4972,7 +5092,7 @@ function openGamePopup(url) {
         if (!inputEl || !feedbackEl) return;
         setConnectionIndicator(feedbackEl, isConnected && myPlayerName ? "online" : "offline", myPlayerName ? "Connected as " + myPlayerName : "Not connected");
         let message = inputEl.value.trim();
-        message = message.replace(/\s*\(\)/g, "").trim();
+        message = message.replace(/\\s*\\(\\)/g, "").trim();
         if (!isConnected || !myPlayerName) {
           setConnectionIndicator(feedbackEl, "error", "Open Omerta and wait for extension to connect.");
           return;
@@ -5375,6 +5495,18 @@ function openGamePopup(url) {
       });
 
       chatMessages.addEventListener("click", (event) => {
+        const imageButton = event.target.closest(".private-chat-image-btn");
+        if (imageButton) {
+          const lightboxImg = document.getElementById("privateImageLightboxImg");
+          const lightboxLabel = document.getElementById("privateImageLightboxLabel");
+          if (lightboxImg && lightboxLabel) {
+            lightboxImg.src = imageButton.getAttribute("data-image-src") || "";
+            lightboxLabel.textContent = imageButton.getAttribute("data-image-name") || "Image";
+            privateImageLightbox.style.display = "flex";
+          }
+          return;
+        }
+
         const replyButton = event.target.closest(".chat-reply-button");
         if (replyButton) {
           const playerName = replyButton.getAttribute("data-player") || "";
@@ -6438,7 +6570,7 @@ app.get("/api/obay", (req, res) => {
 });
 
 app.post("/api/chat", (req, res) => {
-  const { room, player, message, clientId } = req.body || {};
+  const { room, player, message, clientId, imageData, imageName } = req.body || {};
 
   if (!isValidRoom(room)) {
     res.status(400).json({ ok: false, error: "Invalid room" });
@@ -6452,8 +6584,10 @@ app.post("/api/chat", (req, res) => {
 
   let cleanMessage = typeof message === "string" ? message.trim() : "";
   cleanMessage = cleanMessage.replace(/\s*\(\)/g, "").trim();
+  const cleanImageData = typeof imageData === "string" ? imageData.trim() : "";
+  const cleanImageName = typeof imageName === "string" ? imageName.trim() : "";
 
-  if (!cleanMessage) {
+  if (!cleanMessage && !cleanImageData) {
     res.status(400).json({ ok: false, error: "Message is required" });
     return;
   }
@@ -6461,6 +6595,18 @@ app.post("/api/chat", (req, res) => {
   if (cleanMessage.length > 300) {
     res.status(400).json({ ok: false, error: "Message is too long" });
     return;
+  }
+
+  if (cleanImageData) {
+    if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(cleanImageData)) {
+      res.status(400).json({ ok: false, error: "Invalid image format" });
+      return;
+    }
+
+    if (cleanImageData.length > 6 * 1024 * 1024) {
+      res.status(400).json({ ok: false, error: "Image is too large" });
+      return;
+    }
   }
 
   const access = getRoomAccess(room, clientId);
@@ -6475,6 +6621,8 @@ app.post("/api/chat", (req, res) => {
     id: messageId,
     player: player.trim(),
     message: escapeHtml(cleanMessage),
+    imageData: cleanImageData || "",
+    imageName: escapeHtml(cleanImageName || ""),
     createdAt: getServerTime(),
     pinned: false,
   });
